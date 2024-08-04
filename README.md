@@ -3,7 +3,8 @@
 ## Description
 
 DataStorm is a software that insert into a database the data of a CSV or Excel file. The software is able to insert the
-data into a new table or into an existing table. Using C++ and Qt, the software can insert the data very efficiently and
+data into a new table or into an existing table and optimise the type of the columns to reduce the size of the database.
+Using C++ and Qt, the software can insert the data very efficiently and
 into different database management systems like MySQL, PostgreSQL or SQLite.
 
 ## Features
@@ -16,10 +17,10 @@ into different database management systems like MySQL, PostgreSQL or SQLite.
 </label> Insert data into an existing table <br>
 <label>
 <input type="checkbox" style="margin-right: 10px" checked>
-</label> From CSV file <br>
+</label> Optimise the type of the columns (VARCHAR(MAX_LENGHT)) <br>
 <label>
-<input type="checkbox" style="margin-right: 10px">
-</label> From Excel file <br>
+<input type="checkbox" style="margin-right: 10px" checked>
+</label> From CSV file <br>
 
 ## Platforms
 
@@ -52,8 +53,16 @@ into different database management systems like MySQL, PostgreSQL or SQLite.
 <a href="https://gcc.gnu.org/">
 <img src="https://img.shields.io/badge/GCC-17-informational?style=flat&logo=gcc&logoColor=white&color=2bbc8a" alt="GCC" />
 </a>
-
 </div>
+
+## Requirements drivers
+
+These drivers are required to connect to one of the databases:
+
+- mysql-connector for qt
+- postgresql-connector for qt
+- sqlite-connector for qt
+- odbc-connector for qt
 
 ## Installation
 
@@ -100,12 +109,12 @@ make
     </tr>
     <tr>
         <td style="border: 1px solid white;">csv</td>
-        <td style="border: 1px solid white;">2348</td>
-        <td style="border: 1px solid white;">200</td>
+        <td style="border: 1px solid white;">2345</td>
+        <td style="border: 1px solid white;">180</td>
     </tr>
     <tr>
         <td style="border: 1px solid white;">csv</td>
-        <td style="border: 1px solid white;">10 000</td>
-        <td style="border: 1px solid white;">1900</td>
+        <td style="border: 1px solid white;">21 105</td>
+        <td style="border: 1px solid white;">1300</td>
     </tr>
 </table>

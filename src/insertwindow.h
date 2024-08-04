@@ -2,17 +2,10 @@
 #define INSERTWINDOW_H
 
 #include <QMainWindow>
-#include <QLabel>
 #include <QPushButton>
 #include <QSqlDatabase>
-#include <thread>
 #include <fstream>
 #include <string>
-#include <queue>
-#include <mutex>
-#include <condition_variable>
-#include <vector>
-#include <atomic>
 
 namespace Ui {
     class InsertWindow;
@@ -28,11 +21,11 @@ public:
 
     void addToolbar();
 
-    void open_file();
+    void openFile();
 
-    void insert_file();
+    void insertFile();
 
-    void clear_table();
+    void clearTable();
 
     void addLog(const QString &message);
 
@@ -44,6 +37,10 @@ public:
 
     void alterTable();
 
+    void loadCSV();
+
+    void loadExcel();
+
 private:
     Ui::InsertWindow *ui;
     QString fileName;
@@ -51,10 +48,6 @@ private:
     QPushButton *insertSqlButton{};
     QPushButton *openButton{};
     QSqlDatabase database;
-    std::queue<std::string> lineQueue;
-    std::mutex mtx;
-    std::condition_variable cv;
-    std::atomic<bool> done{false};
     QStringList headers;
     char separator = ';';
 };

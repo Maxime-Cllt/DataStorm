@@ -7,16 +7,15 @@
 #include <QSqlDatabase>
 #include <QSqlQuery>
 #include <QSqlError>
-#include <iterator>
-#include <QTextStream>
-#include <QProgressBar>
-#include <QThread>
 #include <iostream>
 #include <fstream>
 
 InsertWindow::InsertWindow(QWidget *parent)
         : QMainWindow(parent), ui(new Ui::InsertWindow) {
     this->ui->setupUi(this);
+
+    this->setWindowTitle("DataStorm");
+    this->setWindowIcon(QIcon::fromTheme("datastorm"));
 
     this->addToolbar();
 
@@ -63,9 +62,9 @@ InsertWindow::InsertWindow(QWidget *parent)
 
 
     // SLOT connections
-    connect(insertSqlButton, &QPushButton::clicked, this, &InsertWindow::insert_file);
-    connect(clearButton, &QPushButton::clicked, this, &InsertWindow::clear_table);
-    connect(openButton, &QPushButton::clicked, this, &InsertWindow::open_file);
+    connect(insertSqlButton, &QPushButton::clicked, this, &InsertWindow::insertFile);
+    connect(clearButton, &QPushButton::clicked, this, &InsertWindow::clearTable);
+    connect(openButton, &QPushButton::clicked, this, &InsertWindow::openFile);
     connect(this->ui->connectButton, &QPushButton::clicked, this, &InsertWindow::connect_to_db);
 }
 
@@ -79,9 +78,10 @@ InsertWindow::~InsertWindow() {
     }
 }
 
-void InsertWindow::open_file() {
-    this->fileName = QFileDialog::getOpenFileName(this, tr("Open File"), "",
-                                                  tr("CSV Files (*.csv);;All Files (*)"));
+void InsertWindow::openFile() {
+
+    this->fileName = QFileDialog::getOpenFileName(this, "Ouvrir un fichier", qApp->applicationDirPath(),
+                                                  "CSV Files (*.csv);;Excel Files (*.xlsx)");
     if (this->fileName.isEmpty()) return;
 
     QStringList parts = this->fileName.split("/");
@@ -96,7 +96,7 @@ void InsertWindow::open_file() {
     addLog("Fichier ouvert : " + this->fileName);
 }
 
-void InsertWindow::insert_file() {
+void InsertWindow::insertFile() {
     if (this->fileName.isEmpty()) {
         QMessageBox::warning(nullptr, "Fichier non ouvert", "Veuillez ouvrir un fichier avant de l'insérer");
         return;
@@ -107,7 +107,18 @@ void InsertWindow::insert_file() {
         return;
     }
 
+    QString type = getFileExtension(this->fileName.toStdString()).c_str();
+    if (type == "csv") {
+        this->loadCSV();
+    } else {
+        QMessageBox::warning(nullptr, "Fichier non supporté", "Le fichier n'est pas supporté");
+    }
 
+    this->ui->progressBar->setValue(100);
+    this->ui->progressBar->setVisible(false);
+}
+
+void InsertWindow::loadCSV() {
     std::ifstream file(this->fileName.toStdString());
     if (!file.is_open()) {
         addLog("Impossible d'ouvrir le fichier");
@@ -170,9 +181,6 @@ void InsertWindow::insert_file() {
     addLog("Temps d'exécution : " +
            QString::number(std::chrono::duration_cast<std::chrono::milliseconds>(
                    std::chrono::high_resolution_clock::now() - start).count()) + " ms");
-
-    this->ui->progressBar->setValue(100);
-    this->ui->progressBar->setVisible(false);
 }
 
 void InsertWindow::alterTable() {
@@ -334,7 +342,7 @@ void InsertWindow::addToolbar() {
             "QPushButton:pressed {background-color: #2E7D32;}");
 }
 
-void InsertWindow::clear_table() {
+void InsertWindow::clearTable() {
     QMessageBox::StandardButton reply;
     reply = QMessageBox::question(this, "Effacer le fichier",
                                   "Êtes-vous sûr de vouloir effacer le fichier ?",
@@ -377,37 +385,52 @@ void InsertWindow::set_connected(const bool connected) {
 
 bool InsertWindow::connect_to_db() {
 
-    if (database.isOpen()) {
-        QMessageBox::warning(this, "Déjà connecté", "Vous êtes déjà connecté à une base de données");
+    try {
+        if (database.isOpen()) {
+            QMessageBox::warning(this, "Déjà connecté", "Vous êtes déjà connecté à une base de données");
+            return false;
+        }
+
+        QString host = this->ui->hostInput->text();
+        QString user = this->ui->userInput->text();
+        QString password = this->ui->passwordInput->text();
+        QString database_name = this->ui->databaseInput->text();
+        QString port = this->ui->portInput->text();
+
+
+        if (host.isEmpty() || user.isEmpty() || password.isEmpty() || database_name.isEmpty() || port.isEmpty()) {
+            QMessageBox::warning(this, "Champs vides",
+                                 "Veuillez remplir tous les champs pour vous connecter à la base de données");
+            return false;
+        }
+
+        this->database = QSqlDatabase::addDatabase("QMYSQL");
+        this->database.setHostName(host.trimmed());
+        this->database.setUserName(user.trimmed());
+        this->database.setPassword(password.trimmed());
+        this->database.setDatabaseName(database_name.trimmed());
+        this->database.setPort((port.trimmed()).toInt());
+
+        addLog("Connexion à la base de données avec les paramètres suivants :");
+        addLog("Hôte: " + host);
+        addLog("Utilisateur: " + user);
+        addLog("Base de données: " + database_name);
+        addLog("Port: " + port);
+
+//    this->database = QSqlDatabase::addDatabase("QSQLITE");
+//    this->database.setDatabaseName("../database.sqlite");
+
+        if (!this->database.open()) {
+            addLog("Impossible de se connecter à la base de données");
+            return false;
+        }
+
+        set_connected(this->database.isOpen());
+        return true;
+    }
+    catch (const std::exception &e) {
+        this->addLog("Erreur lors de la connexion à la base de données : " + QString(e.what()));
+        QMessageBox::critical(this, "Erreur", e.what());
         return false;
     }
-
-    QString host = this->ui->hostInput->text();
-    QString user = this->ui->userInput->text();
-    QString password = this->ui->passwordInput->text();
-    QString database_name = this->ui->databaseInput->text();
-    QString port = this->ui->portInput->text();
-
-//    if (host.isEmpty() || user.isEmpty() || password.isEmpty() || database.isEmpty() || port.isEmpty()) {
-//        QMessageBox::warning(this, "Champs vides",
-//                             "Veuillez remplir tous les champs pour vous connecter à la base de données");
-//        return false;
-//    }
-
-    addLog("Connexion à la base de données avec les paramètres suivants :");
-    addLog("Hôte: " + host);
-    addLog("Utilisateur: " + user);
-    addLog("Base de données: " + database_name);
-    addLog("Port: " + port);
-
-    this->database = QSqlDatabase::addDatabase("QSQLITE");
-    this->database.setDatabaseName("../database.sqlite");
-
-    if (!this->database.open()) {
-        addLog("Impossible de se connecter à la base de données");
-        return false;
-    }
-
-    set_connected(this->database.isOpen());
-    return true;
 }
