@@ -1,0 +1,6 @@
+/test.csv
+/cmake-build-debug
+/cmake-build-release
+CMakeLists.txt.user
+WineQuality.csv
+database.sqlite

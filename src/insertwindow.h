@@ -5,7 +5,14 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QSqlDatabase>
-
+#include <thread>
+#include <fstream>
+#include <string>
+#include <queue>
+#include <mutex>
+#include <condition_variable>
+#include <vector>
+#include <atomic>
 
 namespace Ui {
     class InsertWindow;
@@ -33,6 +40,10 @@ public:
 
     bool connect_to_db();
 
+    void dropAndCreateTable();
+
+    void alterTable();
+
 private:
     Ui::InsertWindow *ui;
     QString fileName;
@@ -40,6 +51,12 @@ private:
     QPushButton *insertSqlButton{};
     QPushButton *openButton{};
     QSqlDatabase database;
+    std::queue<std::string> lineQueue;
+    std::mutex mtx;
+    std::condition_variable cv;
+    std::atomic<bool> done{false};
+    QStringList headers;
+    char separator = ';';
 };
 
 #endif // INSERTWINDOW_H

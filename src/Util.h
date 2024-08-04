@@ -10,7 +10,6 @@
 #include <QIODeviceBase>
 #include <QTextStream>
 #include <QMessageBox>
-#include <QThread>
 
 
 unsigned int countLinesInFile(const QString &fileName) {
@@ -55,6 +54,15 @@ QString insertData(const QString &tableName, const QStringList &columns, const Q
     }
     sql += ")";
     return sql;
+}
+
+QString get_name_for_table(const QString &fileName) {
+    QStringList parts = fileName.contains("/") ? fileName.split("/") : fileName.split("\\");
+    QString name = parts[parts.size() - 1];
+    name = name.split(".")[0];
+    name = name.toLower();
+    name = name.replace(" ", "_");
+    return name;
 }
 
 #endif //DATASTORM_UTIL_H

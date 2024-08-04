@@ -7,34 +7,18 @@
 #include <QSqlDatabase>
 #include <QSqlQuery>
 #include <QSqlError>
-#include <iostream>
 #include <iterator>
 #include <QTextStream>
+#include <QProgressBar>
 #include <QThread>
-#include <QtConcurrent/QtConcurrent>
-#include <QFuture>
 #include <iostream>
 #include <fstream>
-#include <string>
-#include <thread>
-#include <vector>
 
 InsertWindow::InsertWindow(QWidget *parent)
         : QMainWindow(parent), ui(new Ui::InsertWindow) {
     this->ui->setupUi(this);
 
-    addToolbar();
-
-    // Bouton pour arrêter le traitement
-    this->ui->abortButton->setVisible(false);
-    this->ui->abortButton->setEnabled(false);
-    this->ui->abortButton->setIcon(QIcon::fromTheme("process-stop"));
-    this->ui->abortButton->setToolTip("Arrêter le traitement en cours");
-    this->ui->abortButton->setStyleSheet(
-            "QPushButton {background-color: #f44336; color: white; border: none; padding: 5px 10px; border-radius: 5px;font-weight: bold;}"
-            "QPushButton:hover {background-color: #d32f2f;}"
-            "QPushButton:pressed {background-color: #b71c1c;}");
-    this->ui->abortButton->setEnabled(false);
+    this->addToolbar();
 
     // Bouton pour connecter une base de données
     this->ui->connectButton->setIcon(QIcon::fromTheme("network-connect"));
@@ -65,7 +49,11 @@ InsertWindow::InsertWindow(QWidget *parent)
     this->ui->progressBar->setAlignment(Qt::AlignCenter);
     this->ui->progressBar->setStyleSheet(
             "QProgressBar {background-color: #f5f5f5; border: 1px solid #f5f5f5; border-radius: 5px;}"
-            "QProgressBar::chunk {background-color: #4CAF50; width: 20px;}");
+            "QProgressBar::chunk {background-color: #4CAF50; border-radius: 5px;}"
+            "QProgressBar::text {color: black; font-weight: bold;}"
+            "QProgressBar::text::percentage {color: black; font-weight: bold;}"
+            "QProgressBar::text::value {color: black; font-weight: bold;}"
+            "QProgressBar::text::percentage::value {color: black; font-weight: bold;}");
 
     this->ui->methodeBox->setText("APPEND TO TABLE");
     this->ui->methodeBox->setStyleSheet(
@@ -77,9 +65,7 @@ InsertWindow::InsertWindow(QWidget *parent)
     // SLOT connections
     connect(insertSqlButton, &QPushButton::clicked, this, &InsertWindow::insert_file);
     connect(clearButton, &QPushButton::clicked, this, &InsertWindow::clear_table);
-    connect(openButton, &QPushButton::clicked, this, [this] {
-        open_file();
-    });
+    connect(openButton, &QPushButton::clicked, this, &InsertWindow::open_file);
     connect(this->ui->connectButton, &QPushButton::clicked, this, &InsertWindow::connect_to_db);
 }
 
@@ -88,151 +74,203 @@ InsertWindow::~InsertWindow() {
     delete clearButton;
     delete insertSqlButton;
     delete openButton;
-}
-
-QString get_name_for_table(const QString &fileName) {
-    QStringList parts = fileName.contains("/") ? fileName.split("/") : fileName.split("\\");
-    QString name = parts[parts.size() - 1];
-    name = name.split(".")[0];
-    name = name.toLower();
-    name = name.replace(" ", "_");
-    return name;
+    if (this->database.isOpen()) {
+        this->database.close();
+    }
 }
 
 void InsertWindow::open_file() {
-    fileName = QFileDialog::getOpenFileName(this, tr("Open File"), "",
-                                            tr("CSV Files (*.csv);;All Files (*)"));
-    if (fileName.isEmpty()) return;
+    this->fileName = QFileDialog::getOpenFileName(this, tr("Open File"), "",
+                                                  tr("CSV Files (*.csv);;All Files (*)"));
+    if (this->fileName.isEmpty()) return;
 
-    QStringList parts = fileName.split("/");
-    QFile file(fileName);
+    QStringList parts = this->fileName.split("/");
+    QFile file(this->fileName);
     this->ui->fileName->setAlignment(Qt::AlignCenter);
     this->ui->fileName->setText(
             "Fichier: " + parts[parts.size() - 1] + " (" + QString::number(file.size() / 1024) + " Ko)");
 
-    this->ui->tableName->setText(get_name_for_table(fileName));
+    this->ui->tableName->setText(get_name_for_table(this->fileName));
     this->ui->methodeBox->setEnabled(false);
     this->ui->methodeBox->setVisible(false);
-    addLog("Fichier ouvert : " + fileName);
+    addLog("Fichier ouvert : " + this->fileName);
 }
 
 void InsertWindow::insert_file() {
-    if (fileName.isEmpty()) {
-        QMessageBox::warning(this, "Fichier non ouvert", "Veuillez ouvrir un fichier avant de l'insérer");
+    if (this->fileName.isEmpty()) {
+        QMessageBox::warning(nullptr, "Fichier non ouvert", "Veuillez ouvrir un fichier avant de l'insérer");
         return;
     }
-
     if (!database.isOpen()) {
-        QMessageBox::warning(this, "Base de données non connectée",
+        QMessageBox::warning(nullptr, "Base de données non connectée",
                              "Veuillez vous connecter à une base de données avant d'insérer le fichier");
         return;
     }
 
-    this->ui->abortButton->setEnabled(true);
-    this->ui->abortButton->setVisible(true);
 
-    QFile file(fileName);
-    if (!file.open(QIODevice::ReadOnly)) {
-        QMessageBox::critical(this, "Erreur", "Impossible d'ouvrir le fichier : " + file.errorString());
+    std::ifstream file(this->fileName.toStdString());
+    if (!file.is_open()) {
+        addLog("Impossible d'ouvrir le fichier");
+        QMessageBox::critical(nullptr, "Erreur", "Impossible d'ouvrir le fichier");
         return;
     }
 
     auto start = std::chrono::high_resolution_clock::now();
-    QTextStream in(&file);
-
-    QString line = in.readLine();
-    char separator = line.contains(";") ? ';' : ',';
-    QStringList columns = normalizeColumnNames(line.split(separator));
-    addLog("Colonnes : " + columns.join(", ") + " (séparateur : " + separator + ")" + " (nombre de colonnes : " +
-           QString::number(columns.size()) + ")");
+    std::string line;
+    std::getline(file, line);
+    this->separator = line.find(';') != std::string::npos ? ';' : ',';
+    this->headers = normalizeColumnNames(QString::fromStdString(line).split(this->separator));
+    addLog("Colonnes : " + this->headers.join(", ") + " (séparateur : " + this->separator + ")" +
+           " (nombre de colonnes : " + QString::number(this->headers.size()) + ")");
     addLog("Insertion des données...");
-    this->ui->progressBar->setVisible(true);
-    ui->progressBar->setValue(0);
 
+    this->ui->progressBar->setVisible(true);
+    this->ui->progressBar->setValue(0);
     this->database.transaction();
+
+    if (!this->ui->methodeBox->isChecked()) this->dropAndCreateTable();
+
+    QSqlQuery query;
+    QString insertSQL = "INSERT INTO " + this->ui->tableName->text() + " (";
+    insertSQL += this->headers.join(", ") + ") VALUES (";
+    insertSQL += QString("?, ").repeated(this->headers.size());
+    insertSQL.chop(2);
+    insertSQL += ")";
+
+    if (!query.prepare(insertSQL)) {
+        addLog("Erreur lors de la préparation de l'insertion : " + query.lastError().text());
+        QMessageBox::critical(nullptr, "Erreur", "Impossible de préparer l'insertion : " + query.lastError().text());
+        return;
+    }
+
+    const int batchSize = 10000;
+    unsigned int rowCount = 0;
+
+    while (std::getline(file, line)) {
+        QStringList values = QString::fromStdString(line).split(this->separator);
+        for (int i = 0; i < values.size(); ++i) {
+            query.bindValue(i, values[i]);
+        }
+        if (!query.exec()) {
+            addLog("Erreur lors de l'insertion de la ligne : " + query.lastError().text());
+        }
+
+        if (++rowCount % batchSize == 0) {
+            database.commit();
+            database.transaction();
+            this->ui->progressBar->setValue(static_cast<int>((rowCount / static_cast<double>(batchSize)) * 100));
+        }
+    }
+
+    database.commit();
+
+    // Optimisation de la table pour réduire l'espace disque
+    this->alterTable();
+
+    addLog("Temps d'exécution : " +
+           QString::number(std::chrono::duration_cast<std::chrono::milliseconds>(
+                   std::chrono::high_resolution_clock::now() - start).count()) + " ms");
+
+    this->ui->progressBar->setValue(100);
+    this->ui->progressBar->setVisible(false);
+}
+
+void InsertWindow::alterTable() {
+    QSqlQuery query;
+    QStringList alterStatements;
+    for (const auto &header: this->headers) {
+        QString sql = QString("SELECT MAX(LENGTH(%1)) FROM %2").arg(header).arg(this->ui->tableName->text());
+        if (!query.exec(sql)) {
+            addLog("Erreur lors de la récupération de la longueur maximale de la colonne " + header + " : " +
+                   query.lastError().text());
+            return;
+        }
+        if (query.next()) {
+            int maxLength = query.value(0).toInt();
+            if (maxLength == 0) {
+                maxLength = 1;
+            }
+            QString alterSQL;
+            switch (this->database.driverName().toStdString()[1]) {
+                case 'S':
+                    alterSQL = QString("%1 VARCHAR(%2)").arg(header).arg(maxLength);
+                    break;
+                case 'M':
+                    alterSQL = QString("ALTER TABLE %1 MODIFY COLUMN %2 VARCHAR(%3)").arg(
+                            this->ui->tableName->text()).arg(header).arg(maxLength);
+                    break;
+                case 'P':
+                    alterSQL = QString("ALTER TABLE %1 ALTER COLUMN %2 TYPE VARCHAR(%3)").arg(
+                            this->ui->tableName->text()).arg(header).arg(maxLength);
+                    break;
+                default:
+                    addLog("Le driver de la base de données n'est pas supporté");
+                    break;
+            }
+            alterStatements.append(alterSQL);
+        }
+    }
+
+    if (database.driverName() == "QSQLITE") {
+        QString createTableSQL = "CREATE TABLE " + this->ui->tableName->text() + "_new (";
+        for (const auto &alterSQL: alterStatements) {
+            createTableSQL += alterSQL + ", ";
+        }
+        createTableSQL.chop(2);
+        createTableSQL += ")";
+
+        QString copyDataSQL = QString("INSERT INTO %1_new SELECT * FROM %1").arg(this->ui->tableName->text());
+        QString dropOldTableSQL = QString("DROP TABLE %1").arg(this->ui->tableName->text());
+        QString renameTableSQL = QString("ALTER TABLE %1_new RENAME TO %1").arg(this->ui->tableName->text());
+
+        if (!query.exec(createTableSQL)) {
+            addLog("Erreur lors de la création de la nouvelle table : " + query.lastError().text());
+            return;
+        }
+        if (!query.exec(copyDataSQL)) {
+            addLog("Erreur lors de la copie des données : " + query.lastError().text());
+            return;
+        }
+        if (!query.exec(dropOldTableSQL)) {
+            addLog("Erreur lors de la suppression de l'ancienne table : " + query.lastError().text());
+            return;
+        }
+        if (!query.exec(renameTableSQL)) {
+            addLog("Erreur lors du renommage de la nouvelle table : " + query.lastError().text());
+            return;
+        }
+    } else {
+        for (const auto &alterSQL: alterStatements) {
+            if (!query.exec(alterSQL)) {
+                addLog("Erreur lors de la modification de la colonne : " + query.lastError().text());
+                return;
+            }
+        }
+    }
+}
+
+void InsertWindow::dropAndCreateTable() {
     QSqlQuery query;
     QString sql;
 
-    if (!this->ui->methodeBox->isChecked()) {
-        sql = "DROP TABLE IF EXISTS " + this->ui->tableName->text() + ";";
-        if (!query.exec(sql)) {
-            addLog("Erreur lors de la suppression de la table : " + query.lastError().text());
-            QMessageBox::critical(this, "Erreur", "Impossible de supprimer la table : " + query.lastError().text());
-            return;
-        }
-        this->database.commit();
+    sql = "DROP TABLE IF EXISTS " + this->ui->tableName->text() + ";";
+    if (!query.exec(sql)) {
+        addLog("Erreur lors de la suppression de la table : " + query.lastError().text());
+        return;
     }
 
-    // Créer la table
     sql = "CREATE TABLE " + this->ui->tableName->text() + " (";
-    for (unsigned int i = 0; i < columns.size(); i++) {
-        sql += columns[i] + " TEXT";
-        if (i < columns.size() - 1) sql += ", ";
+    for (int i = 0; i < this->headers.size(); ++i) {
+        sql += this->headers[i] + " TEXT";
+        if (i < this->headers.size() - 1) sql += ", ";
     }
     sql += ")";
 
     if (!query.exec(sql)) {
         addLog("Erreur lors de la création de la table : " + query.lastError().text());
-        QMessageBox::critical(this, "Erreur", "Impossible de créer la table : " + query.lastError().text());
+        QMessageBox::critical(nullptr, "Erreur", "Impossible de créer la table : " + query.lastError().text());
         return;
     }
-    this->database.commit();
-    this->ui->progressBar->setValue(5);
-
-    const unsigned int lineCount = countLinesInFile(fileName);
-    this->addLog("Nombre de lignes dans le fichier : " + QString::number(lineCount));
-
-    // insere les données en background pour ne pas bloquer l'interface
-    QFuture<void> future = QtConcurrent::run([=, this]() {
-        try {
-            QFile file(fileName);
-            if (!file.open(QIODevice::ReadOnly)) {
-                addLog("Erreur: Impossible d'ouvrir le fichier en background");
-                return;
-            }
-            QTextStream in(&file);
-            QSqlQuery query(this->database);
-            QString sql;
-            int i = 0;
-
-            while (!in.atEnd()) {
-                QString line = in.readLine();
-                QStringList values = line.split(separator);
-
-                if (values.size() != columns.size()) {
-                    addLog("Erreur : la ligne " + QString::number(i) + " ne contient pas le bon nombre de colonnes");
-                    continue;
-                }
-
-                if (!query.exec(insertData(ui->tableName->text(), columns, values))) {
-                    addLog("Erreur lors de l'insertion de la ligne " + QString::number(i) + " : " +
-                           query.lastError().text());
-                    continue;
-                }
-
-                i++;
-                int progress = static_cast<int>(static_cast<double>(i) / static_cast<double>(lineCount) * 100);
-                QMetaObject::invokeMethod(this->ui->progressBar, "setValue", Q_ARG(int, progress));
-            }
-            this->database.commit();
-
-            addLog("Données insérées avec succès");
-            this->ui->progressBar->setValue(100);
-            this->ui->abortButton->setEnabled(false);
-            this->ui->abortButton->setVisible(false);
-            auto end = std::chrono::high_resolution_clock::now();
-            this->addLog(
-                    "Temps d'exécution : " + QString::number(
-                            (double) std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() /
-                            1000.0) +
-                    " s");
-        } catch (const std::exception &e) {
-            std::cerr << e.what() << std::endl;
-            addLog("Erreur lors de l'insertion des données : " + QString::fromStdString(e.what()));
-        }
-    });
-
-
 }
 
 void InsertWindow::addToolbar() {
@@ -255,12 +293,12 @@ void InsertWindow::addToolbar() {
     // Ajouter du style CSS à la toolbar pour espacer les boutons
     toolBar->setStyleSheet(
             "QToolBar {background-color: #2196F3; color: white; padding: 5px;}"
-            "QToolBar::separator {background-color: white; width: 5px;}");
+            "QToolBar::this->separator {background-color: white; width: 5px;}");
 
     openButton->setIcon(QIcon::fromTheme("document-open"));
     openButton->setToolTip("Ouvrir un fichier");
     insertSqlButton->setToolTip("Insérer le contenu du fichier dans la base de données");
-    insertSqlButton->setIcon(QIcon::fromTheme("insert-object"));
+    insertSqlButton->setIcon(QIcon::fromTheme("insert-table"));
     clearButton->setToolTip("Effacer le tableau");
     clearButton->setIcon(QIcon::fromTheme("edit-clear"));
     clearButton->setText("Effacer");
@@ -275,7 +313,7 @@ void InsertWindow::addToolbar() {
                   "QTableWidget::item:selected:!active {color: black;}"
                   "QTableWidget {text-align: center;}"
                   "QToolBar {background-color: #2196F3; color: white;}"
-                  "QToolBar::separator {background-color: white; width: 5px;}"
+                  "QToolBar::this->separator {background-color: white; width: 5px;}"
                   "QPushButton {background-color: #2196F3; color: white; border: none; padding: 5px 10px;}"
                   "QPushButton:hover {background-color: #1976D2;}"
                   "QPushButton:pressed {background-color: #0D47A1;}");
@@ -286,14 +324,14 @@ void InsertWindow::addToolbar() {
             "QPushButton:pressed {background-color: #b71c1c;}");
 
     openButton->setStyleSheet(
+            "QPushButton {background-color: #2196F3; color: white; border: none; padding: 5px 10px; border-radius: 5px; font-weight: bold;}"
+            "QPushButton:hover {background-color: #1976D2;}"
+            "QPushButton:pressed {background-color: #0D47A1;}");
+
+    insertSqlButton->setStyleSheet(
             "QPushButton {background-color: #4CAF50; color: white; border: none; padding: 5px 10px; border-radius: 5px; font-weight: bold;}"
             "QPushButton:hover {background-color: #388E3C;}"
             "QPushButton:pressed {background-color: #2E7D32;}");
-
-    insertSqlButton->setStyleSheet(
-            "QPushButton {background-color: #FFC107; color: white; border: none; padding: 5px 10px; border-radius: 5px; font-weight: bold;}"
-            "QPushButton:hover {background-color: #00CED1;}"
-            "QPushButton:pressed {background-color: #00BFFF;}");
 }
 
 void InsertWindow::clear_table() {
