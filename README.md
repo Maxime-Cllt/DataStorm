@@ -1,4 +1,7 @@
-<h1 align="center">DataStorm</h1>
+<div align=center>
+<img src="https://github.com/Maxime-Cllt/DataStorm/blob/main/assets/datastorm.png" width="100px" height="100px"  alt="DataStorm" align="center" />
+<h1>DataStorm</h1>
+</div>
 
 ## Description
 
