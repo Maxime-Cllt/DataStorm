@@ -104,20 +104,23 @@ make
 
 ## Benchmark
 
-<table style="width:100%; text-align: center; justify-content: center; display: flex; border-collapse: collapse;">
+<div align="center">
+<table style="width: 100%; border-collapse: collapse; text-align: center;">
     <tr>
-        <th style="font-weight: bolder; border: 1px solid white;">File</th>
-        <th style="font-weight: bolder; border: 1px solid white;">Size (Ko)</th>
-        <th style="font-weight: bolder; border: 1px solid white;">Time to import (ms)</th>
+        <th align="center" style="font-weight: bolder; border: 1px solid white;">File</th>
+        <th align="center" style="font-weight: bolder; border: 1px solid white;">Size (Ko)</th>
+        <th align="center" style="font-weight: bolder; border: 1px solid white;">Time to import (ms)</th>
     </tr>
     <tr>
-        <td style="border: 1px solid white;">csv</td>
-        <td style="border: 1px solid white;">2345</td>
-        <td style="border: 1px solid white;">180</td>
+        <td align="center" style="border: 1px solid white;">csv</td>
+        <td align="center" style="border: 1px solid white;">2345</td>
+        <td align="center" style="border: 1px solid white;">180</td>
     </tr>
     <tr>
-        <td style="border: 1px solid white;">csv</td>
-        <td style="border: 1px solid white;">21 105</td>
-        <td style="border: 1px solid white;">1300</td>
+        <td align="center" style="border: 1px solid white;">csv</td>
+        <td align="center" style="border: 1px solid white;">21 105</td>
+        <td align="center" style="border: 1px solid white;">1300</td>
     </tr>
 </table>
+</div>
+
