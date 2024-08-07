@@ -1,6 +1,6 @@
 #include "insertwindow.h"
 #include "ui_insertwindow.h"
-#include "Util.h"
+#include "util.h"
 #include <QToolBar>
 #include <QFileDialog>
 #include <QMessageBox>
@@ -60,12 +60,35 @@ InsertWindow::InsertWindow(QWidget *parent)
     this->ui->methodeBox->setEnabled(false);
     this->ui->methodeBox->setVisible(false);
 
+    this->ui->database_box->setStyleSheet(
+            "QGroupBox {background-color: #f5f5f5; border: 1px solid #f5f5f5; border-radius: 5px; padding: 5px;}");
+
+    QStringList drivers = QSqlDatabase::drivers();
+    for (const QString &driver: drivers) {
+        this->ui->database_box->addItem(driver);
+    }
 
     // SLOT connections
     connect(insertSqlButton, &QPushButton::clicked, this, &InsertWindow::insertFile);
     connect(clearButton, &QPushButton::clicked, this, &InsertWindow::clearTable);
     connect(openButton, &QPushButton::clicked, this, &InsertWindow::openFile);
     connect(this->ui->connectButton, &QPushButton::clicked, this, &InsertWindow::connect_to_db);
+    connect(this->ui->database_box, QOverload<int>::of(&QComboBox::currentIndexChanged), [this](const int index) {
+
+        const std::string text = this->ui->database_box->currentText().toStdString();
+
+        if (text == "QSQLITE") {
+            this->ui->portInput->setText("");
+        } else if (text == "QMARIADB") {
+            this->ui->portInput->setText("3307");
+        } else if (text == "QMYSQL") {
+            this->ui->portInput->setText("3306");
+        } else if (text == "QODBC") {
+            this->ui->portInput->setText("1433");
+        } else if (text == "QPSQL") {
+            this->ui->portInput->setText("5432");
+        }
+    });
 }
 
 InsertWindow::~InsertWindow() {
@@ -187,7 +210,7 @@ void InsertWindow::alterTable() {
     QSqlQuery query;
     QStringList alterStatements;
     for (const auto &header: this->headers) {
-        QString sql = QString("SELECT MAX(LENGTH(%1)) FROM %2").arg(header).arg(this->ui->tableName->text());
+        QString sql = QString("SELECT MAX(LENGTH(%1)) FROM %2").arg(header).arg(this->ui->tableName->text().trimmed());
         if (!query.exec(sql)) {
             addLog("Erreur lors de la récupération de la longueur maximale de la colonne " + header + " : " +
                    query.lastError().text());
@@ -205,11 +228,11 @@ void InsertWindow::alterTable() {
                     break;
                 case 'M':
                     alterSQL = QString("ALTER TABLE %1 MODIFY COLUMN %2 VARCHAR(%3)").arg(
-                            this->ui->tableName->text()).arg(header).arg(maxLength);
+                            this->ui->tableName->text().trimmed()).arg(header).arg(maxLength);
                     break;
                 case 'P':
                     alterSQL = QString("ALTER TABLE %1 ALTER COLUMN %2 TYPE VARCHAR(%3)").arg(
-                            this->ui->tableName->text()).arg(header).arg(maxLength);
+                            this->ui->tableName->text().trimmed()).arg(header).arg(maxLength);
                     break;
                 default:
                     addLog("Le driver de la base de données n'est pas supporté");
@@ -220,16 +243,16 @@ void InsertWindow::alterTable() {
     }
 
     if (database.driverName() == "QSQLITE") {
-        QString createTableSQL = "CREATE TABLE " + this->ui->tableName->text() + "_new (";
+        QString createTableSQL = "CREATE TABLE " + this->ui->tableName->text().trimmed() + "_new (";
         for (const auto &alterSQL: alterStatements) {
             createTableSQL += alterSQL + ", ";
         }
         createTableSQL.chop(2);
         createTableSQL += ")";
 
-        QString copyDataSQL = QString("INSERT INTO %1_new SELECT * FROM %1").arg(this->ui->tableName->text());
-        QString dropOldTableSQL = QString("DROP TABLE %1").arg(this->ui->tableName->text());
-        QString renameTableSQL = QString("ALTER TABLE %1_new RENAME TO %1").arg(this->ui->tableName->text());
+        QString copyDataSQL = QString("INSERT INTO %1_new SELECT * FROM %1").arg(this->ui->tableName->text().trimmed());
+        QString dropOldTableSQL = QString("DROP TABLE %1").arg(this->ui->tableName->text().trimmed());
+        QString renameTableSQL = QString("ALTER TABLE %1_new RENAME TO %1").arg(this->ui->tableName->text().trimmed());
 
         if (!query.exec(createTableSQL)) {
             addLog("Erreur lors de la création de la nouvelle table : " + query.lastError().text());
@@ -384,7 +407,6 @@ void InsertWindow::set_connected(const bool connected) {
 }
 
 bool InsertWindow::connect_to_db() {
-
     try {
         if (database.isOpen()) {
             QMessageBox::warning(this, "Déjà connecté", "Vous êtes déjà connecté à une base de données");
@@ -397,12 +419,14 @@ bool InsertWindow::connect_to_db() {
         QString database_name = this->ui->databaseInput->text();
         QString port = this->ui->portInput->text();
 
-
         if (host.isEmpty() || user.isEmpty() || password.isEmpty() || database_name.isEmpty() || port.isEmpty()) {
             QMessageBox::warning(this, "Champs vides",
                                  "Veuillez remplir tous les champs pour vous connecter à la base de données");
             return false;
         }
+
+        //    this->database = QSqlDatabase::addDatabase("QSQLITE");
+//    this->database.setDatabaseName("../database.sqlite");
 
         this->database = QSqlDatabase::addDatabase("QMYSQL");
         this->database.setHostName(host.trimmed());
@@ -416,9 +440,6 @@ bool InsertWindow::connect_to_db() {
         addLog("Utilisateur: " + user);
         addLog("Base de données: " + database_name);
         addLog("Port: " + port);
-
-//    this->database = QSqlDatabase::addDatabase("QSQLITE");
-//    this->database.setDatabaseName("../database.sqlite");
 
         if (!this->database.open()) {
             addLog("Impossible de se connecter à la base de données");

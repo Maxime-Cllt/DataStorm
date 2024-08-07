@@ -39,8 +39,6 @@ public:
 
     void loadCSV();
 
-    void loadExcel();
-
 private:
     Ui::InsertWindow *ui;
     QString fileName;

@@ -20,7 +20,7 @@ add_executable(DataStorm
         src/insertwindow.h
         src/insertwindow.cpp
         src/insertwindow.ui
-        src/Util.h
+        src/util.h
 )
 
 target_link_libraries(DataStorm
