@@ -63,7 +63,13 @@ InsertWindow::InsertWindow(QWidget *parent)
     this->ui->database_box->setStyleSheet(
             "QGroupBox {background-color: #f5f5f5; border: 1px solid #f5f5f5; border-radius: 5px; padding: 5px;}");
 
+    this->ui->database_path_opener->setStyleSheet(
+            "QLineEdit {background-color: #f5f5f5; border: 1px solid #f5f5f5; border-radius: 5px; padding: 5px;}");
+    this->ui->database_path_opener->setToolTip("Chemin du fichier SQLite");
+    this->ui->database_path_opener->setIcon(QIcon::fromTheme("folder"));
+
     QStringList drivers = QSqlDatabase::drivers();
+    this->ui->database_box->addItem("");
     for (const QString &driver: drivers) {
         this->ui->database_box->addItem(driver);
     }
@@ -75,19 +81,35 @@ InsertWindow::InsertWindow(QWidget *parent)
     connect(this->ui->connectButton, &QPushButton::clicked, this, &InsertWindow::connect_to_db);
     connect(this->ui->database_box, QOverload<int>::of(&QComboBox::currentIndexChanged), [this](const int index) {
 
-        const std::string text = this->ui->database_box->currentText().toStdString();
+        this->connectionType = this->ui->database_box->currentText();
 
-        if (text == "QSQLITE") {
+        if (connectionType == "QSQLITE") {
             this->ui->portInput->setText("");
-        } else if (text == "QMARIADB") {
+            this->ui->sqlite_path_input->setVisible(true);
+            this->ui->sqlite_path_input->setEnabled(true);
+            this->ui->sqlite_input_label->setVisible(true);
+            this->ui->database_path_opener->setVisible(true);
+            return;
+        } else if (connectionType == "QMARIADB") {
             this->ui->portInput->setText("3307");
-        } else if (text == "QMYSQL") {
+        } else if (connectionType == "QMYSQL") {
             this->ui->portInput->setText("3306");
-        } else if (text == "QODBC") {
+        } else if (connectionType == "QODBC") {
             this->ui->portInput->setText("1433");
-        } else if (text == "QPSQL") {
+        } else if (connectionType == "QPSQL") {
             this->ui->portInput->setText("5432");
         }
+
+        this->ui->sqlite_path_input->setVisible(false);
+        this->ui->sqlite_path_input->setEnabled(false);
+        this->ui->sqlite_input_label->setVisible(false);
+        this->ui->database_path_opener->setVisible(false);
+    });
+    connect(this->ui->database_path_opener, &QPushButton::clicked, [this]() {
+        QString path = QFileDialog::getOpenFileName(this, "Ouvrir un fichier SQLite", qApp->applicationDirPath(),
+                                                    "SQLite Files (*.sqlite *.db)");
+        if (path.isEmpty()) return;
+        this->ui->sqlite_path_input->setText(path);
     });
 }
 
@@ -114,8 +136,6 @@ void InsertWindow::openFile() {
             "Fichier: " + parts[parts.size() - 1] + " (" + QString::number(file.size() / 1024) + " Ko)");
 
     this->ui->tableName->setText(get_name_for_table(this->fileName));
-    this->ui->methodeBox->setEnabled(false);
-    this->ui->methodeBox->setVisible(false);
     addLog("Fichier ouvert : " + this->fileName);
 }
 
@@ -413,33 +433,40 @@ bool InsertWindow::connect_to_db() {
             return false;
         }
 
-        QString host = this->ui->hostInput->text();
-        QString user = this->ui->userInput->text();
-        QString password = this->ui->passwordInput->text();
-        QString database_name = this->ui->databaseInput->text();
-        QString port = this->ui->portInput->text();
+        if (this->connectionType == "QSQLITE") {
+            QString path = this->ui->sqlite_path_input->text();
+            if (path.isEmpty()) {
+                QMessageBox::warning(this, "Champ vide",
+                                     "Veuillez entrer le chemin du fichier SQLite pour vous connecter à la base de données");
+                return false;
+            }
 
-        if (host.isEmpty() || user.isEmpty() || password.isEmpty() || database_name.isEmpty() || port.isEmpty()) {
-            QMessageBox::warning(this, "Champs vides",
-                                 "Veuillez remplir tous les champs pour vous connecter à la base de données");
-            return false;
+            this->database = QSqlDatabase::addDatabase(this->connectionType);
+            this->database.setDatabaseName(path.trimmed());
+            addLog("Connexion à la base de données SQLite avec le chemin : " + path);
+
+        } else {
+            const QString host = this->ui->hostInput->text();
+            const QString user = this->ui->userInput->text();
+            const QString password = this->ui->passwordInput->text();
+            const QString database_name = this->ui->databaseInput->text();
+            const QString port = this->ui->portInput->text();
+
+            if (host.isEmpty() || user.isEmpty() || password.isEmpty() || database_name.isEmpty() || port.isEmpty()) {
+                QMessageBox::warning(this, "Champs vides",
+                                     "Veuillez remplir tous les champs pour vous connecter à la base de données");
+                return false;
+            }
+
+            this->database = QSqlDatabase::addDatabase(this->connectionType);
+            this->database.setHostName(host.trimmed());
+            this->database.setUserName(user.trimmed());
+            this->database.setPassword(password.trimmed());
+            this->database.setDatabaseName(database_name.trimmed());
+            this->database.setPort((port.trimmed()).toInt());
+
+            addLog("Connexion à la base de données avec les paramètres suivants :");
         }
-
-        //    this->database = QSqlDatabase::addDatabase("QSQLITE");
-//    this->database.setDatabaseName("../database.sqlite");
-
-        this->database = QSqlDatabase::addDatabase("QMYSQL");
-        this->database.setHostName(host.trimmed());
-        this->database.setUserName(user.trimmed());
-        this->database.setPassword(password.trimmed());
-        this->database.setDatabaseName(database_name.trimmed());
-        this->database.setPort((port.trimmed()).toInt());
-
-        addLog("Connexion à la base de données avec les paramètres suivants :");
-        addLog("Hôte: " + host);
-        addLog("Utilisateur: " + user);
-        addLog("Base de données: " + database_name);
-        addLog("Port: " + port);
 
         if (!this->database.open()) {
             addLog("Impossible de se connecter à la base de données");
@@ -447,7 +474,7 @@ bool InsertWindow::connect_to_db() {
         }
 
         set_connected(this->database.isOpen());
-        return true;
+        return this->database.isOpen();
     }
     catch (const std::exception &e) {
         this->addLog("Erreur lors de la connexion à la base de données : " + QString(e.what()));

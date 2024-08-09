@@ -48,6 +48,7 @@ private:
     QSqlDatabase database;
     QStringList headers;
     char separator = ';';
+    QString connectionType;
 };
 
 #endif // INSERTWINDOW_H
