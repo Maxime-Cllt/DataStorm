@@ -9,14 +9,18 @@
 #include <QSqlError>
 #include <iostream>
 #include <fstream>
+#include <QInputDialog>
+#include <QJsonObject>
+#include <QJsonDocument>
 
 InsertWindow::InsertWindow(QWidget *parent)
         : QMainWindow(parent), ui(new Ui::InsertWindow) {
     this->ui->setupUi(this);
 
     this->setWindowTitle("DataStorm");
-    this->setWindowIcon(QIcon::fromTheme("datastorm"));
+    this->setWindowIcon(QIcon::fromTheme("insert-table"));
 
+    this->addMenuBar();
     this->addToolbar();
 
     // Bouton pour connecter une base de données
@@ -78,7 +82,7 @@ InsertWindow::InsertWindow(QWidget *parent)
     connect(insertSqlButton, &QPushButton::clicked, this, &InsertWindow::insertFile);
     connect(clearButton, &QPushButton::clicked, this, &InsertWindow::clearTable);
     connect(openButton, &QPushButton::clicked, this, &InsertWindow::openFile);
-    connect(this->ui->connectButton, &QPushButton::clicked, this, &InsertWindow::connect_to_db);
+    connect(this->ui->connectButton, &QPushButton::clicked, this, &InsertWindow::connectToDb);
     connect(this->ui->database_box, QOverload<int>::of(&QComboBox::currentIndexChanged), [this](const int index) {
 
         this->connectionType = this->ui->database_box->currentText();
@@ -150,6 +154,9 @@ void InsertWindow::insertFile() {
         return;
     }
 
+    this->ui->progressBar->setVisible(true);
+    this->ui->progressBar->setValue(0);
+
     QString type = getFileExtension(this->fileName.toStdString()).c_str();
     if (type == "csv") {
         this->loadCSV();
@@ -158,7 +165,6 @@ void InsertWindow::insertFile() {
     }
 
     this->ui->progressBar->setValue(100);
-    this->ui->progressBar->setVisible(false);
 }
 
 void InsertWindow::loadCSV() {
@@ -170,6 +176,7 @@ void InsertWindow::loadCSV() {
     }
 
     auto start = std::chrono::high_resolution_clock::now();
+
     std::string line;
     std::getline(file, line);
     this->separator = line.find(';') != std::string::npos ? ';' : ',';
@@ -178,11 +185,13 @@ void InsertWindow::loadCSV() {
            " (nombre de colonnes : " + QString::number(this->headers.size()) + ")");
     addLog("Insertion des données...");
 
-    this->ui->progressBar->setVisible(true);
-    this->ui->progressBar->setValue(0);
     this->database.transaction();
 
     if (!this->ui->methodeBox->isChecked()) this->dropAndCreateTable();
+
+    addLog("Temps création : " +
+           QString::number(std::chrono::duration_cast<std::chrono::milliseconds>(
+                   std::chrono::high_resolution_clock::now() - start).count()) + " ms");
 
     QSqlQuery query;
     QString insertSQL = "INSERT INTO " + this->ui->tableName->text() + " (";
@@ -211,55 +220,72 @@ void InsertWindow::loadCSV() {
 
         if (++rowCount % batchSize == 0) {
             database.commit();
-            database.transaction();
-            this->ui->progressBar->setValue(static_cast<int>((rowCount / static_cast<double>(batchSize)) * 100));
+            this->ui->progressBar->setValue((int) rowCount / batchSize * 100);
         }
     }
 
     database.commit();
 
+    addLog("Temps insertion : " +
+           QString::number(std::chrono::duration_cast<std::chrono::milliseconds>(
+                   std::chrono::high_resolution_clock::now() - start).count()) + " ms");
+
     // Optimisation de la table pour réduire l'espace disque
     this->alterTable();
 
-    addLog("Temps d'exécution : " +
+    addLog("Temps d'exécution total: " +
            QString::number(std::chrono::duration_cast<std::chrono::milliseconds>(
                    std::chrono::high_resolution_clock::now() - start).count()) + " ms");
+
+    file.close();
+}
+
+
+QString InsertWindow::alterColumn(const QString &column) {
+    QSqlQuery query;
+    QString sql = QString("SELECT MAX(LENGTH(%1)) FROM %2").arg(column).arg(this->ui->tableName->text().trimmed());
+
+    if (!query.exec(sql)) {
+        addLog("Erreur lors de la récupération de la longueur maximale de la colonne " + column + " : " +
+               query.lastError().text());
+        return "";
+    }
+
+    if (!query.next()) {
+        this->addLog("Impossible de récupérer la longueur maximale de la colonne " + column);
+        return "";
+    }
+
+    int maxLength = query.value(0).toInt();
+    if (maxLength == 0) {
+        maxLength = 1;
+    }
+    QString alterSQL;
+
+    QMap<QString, QString> sqlMap = {
+            {"QSQLITE",  "ALTER TABLE %1 ADD COLUMN %2 VARCHAR(%3)"},
+            {"QODBC",    "ALTER TABLE %1 ALTER COLUMN %2 VARCHAR(%3)"},
+            {"QMYSQL",   "ALTER TABLE %1 MODIFY COLUMN %2 VARCHAR(%3)"},
+            {"QMARIADB", "ALTER TABLE %1 MODIFY COLUMN %2 VARCHAR(%3)"},
+            {"QPSQL",    "ALTER TABLE %1 ALTER COLUMN %2 TYPE VARCHAR(%3)"}
+    };
+
+    if (sqlMap.contains(this->connectionType)) {
+        alterSQL = sqlMap[this->connectionType].arg(
+                this->ui->tableName->text().trimmed()).arg(column).arg(maxLength);
+    } else {
+        addLog("Le driver de la base de données n'est pas supporté");
+    }
+
+    return alterSQL;
 }
 
 void InsertWindow::alterTable() {
     QSqlQuery query;
     QStringList alterStatements;
+
     for (const auto &header: this->headers) {
-        QString sql = QString("SELECT MAX(LENGTH(%1)) FROM %2").arg(header).arg(this->ui->tableName->text().trimmed());
-        if (!query.exec(sql)) {
-            addLog("Erreur lors de la récupération de la longueur maximale de la colonne " + header + " : " +
-                   query.lastError().text());
-            return;
-        }
-        if (query.next()) {
-            int maxLength = query.value(0).toInt();
-            if (maxLength == 0) {
-                maxLength = 1;
-            }
-            QString alterSQL;
-            switch (this->database.driverName().toStdString()[1]) {
-                case 'S':
-                    alterSQL = QString("%1 VARCHAR(%2)").arg(header).arg(maxLength);
-                    break;
-                case 'M':
-                    alterSQL = QString("ALTER TABLE %1 MODIFY COLUMN %2 VARCHAR(%3)").arg(
-                            this->ui->tableName->text().trimmed()).arg(header).arg(maxLength);
-                    break;
-                case 'P':
-                    alterSQL = QString("ALTER TABLE %1 ALTER COLUMN %2 TYPE VARCHAR(%3)").arg(
-                            this->ui->tableName->text().trimmed()).arg(header).arg(maxLength);
-                    break;
-                default:
-                    addLog("Le driver de la base de données n'est pas supporté");
-                    break;
-            }
-            alterStatements.append(alterSQL);
-        }
+        alterStatements.append(this->alterColumn(header));
     }
 
     if (database.driverName() == "QSQLITE") {
@@ -385,6 +411,122 @@ void InsertWindow::addToolbar() {
             "QPushButton:pressed {background-color: #2E7D32;}");
 }
 
+void InsertWindow::addMenuBar() {
+    std::unique_ptr<QMenuBar> menuBar = std::make_unique<QMenuBar>(this);
+    QMenu *fileMenu = menuBar->addMenu("Réglages");
+    QAction *saveConfig = fileMenu->addAction("Sauvegarder la configuration");
+    QAction *loadConfig = fileMenu->addAction("Charger la configuration");
+    connect(saveConfig, &QAction::triggered, this, &InsertWindow::saveConfig);
+    connect(loadConfig, &QAction::triggered, this, &InsertWindow::loadConfig);
+
+    menuBar->setStyleSheet(
+            "QMenuBar {background-color: #2196F3; color: white;}"
+            "QMenuBar::item:selected {background-color: #1976D2;}"
+            "QMenu {background-color: #2196F3; color: white;}"
+            "QMenu::item:selected {background-color: #1976D2;}"
+            "QMenu::separator {background-color: white; width: 5px;}"
+            "QMenuBar::item {padding: 5px 10px;}"
+            "QMenuBar::item:selected {background-color: #1976D2;}"
+            "QMenuBar::item:pressed {background-color: #0D47A1;}"
+            "QMenuBar::item {background-color: #2196F3; color: white;}"
+            "QMenuBar::item:selected {background-color: #1976D2;}"
+            "QMenuBar::item:pressed {background-color: #0D47A1;}"
+            "QMenuBar::item {background-color: #2196F3; color: white;}"
+            "QMenuBar::item:selected {background-color: #1976D2;}"
+            "QMenuBar::item:pressed {background-color: #0D47A1;}"
+            "QMenuBar::item {background-color: #2196F3; color: white;}"
+            "QMenuBar::item:selected {background-color: #1976D2;}"
+            "QMenuBar::item:pressed {background-color: #0D47A1;}"
+            "QMenuBar::item {background-color: #2196F3; color: white;}"
+            "QMenuBar::item:selected {background-color: #1976D2;}"
+            "QMenuBar::item:pressed {background-color: #0D47A1;}"
+            "QMenuBar::item {background-color: #2196F3; color: white;}"
+            "QMenuBar::item:selected {background-color: #1976D2;}"
+            "QMenuBar::item:pressed {background-color: #0D47A1;}"
+            "QMenuBar::item {background-color: #2196F3; color: white;}"
+            "QMenuBar::item:selected {background-color: #1976D2;}"
+            "QMenuBar::item:pressed {background-color: #0D47A1;}"
+            "QMenuBar::item {background-color: #2196F3; color: white;}"
+            "QMenuBar::item:selected {background-color: #1976D2;}"
+            "QMenuBar::item:pressed {background-color: #0D47A1;}"
+            "QMenuBar::item {background-color: #2196F3; color: white;}"
+    );
+    setMenuBar(menuBar.release());
+}
+
+void InsertWindow::saveConfig() {
+    bool ok;
+    const QString name = QInputDialog::getText(this, "Nom de la configuration",
+                                               "Nom de la configuration:", QLineEdit::Normal,
+                                               "", &ok);
+    if (!ok || name.isEmpty()) {
+        return;
+    }
+
+    QFile file(qApp->applicationDirPath() + "/config/databse_config.json");
+
+    if (!file.exists()) {
+        QDir dir(qApp->applicationDirPath() + "/config");
+        if (!dir.exists()) {
+            dir.mkpath(".");
+        }
+        file.open(QIODevice::WriteOnly);
+        file.close();
+    }
+
+    if (!file.open(QIODevice::WriteOnly)) {
+        QMessageBox::critical(this, "Erreur", "Impossible d'ouvrir le fichier de configuration");
+        return;
+    }
+
+    QJsonObject json;
+    json["name"] = name;
+    json["driver"] = this->ui->database_box->currentText();
+    json["host"] = this->ui->hostInput->text();
+    json["user"] = this->ui->userInput->text();
+    json["password"] = this->ui->passwordInput->text();
+    json["database"] = this->ui->databaseInput->text();
+    json["port"] = this->ui->portInput->text();
+    json["connectionType"] = this->ui->database_box->currentText();
+    json["fileName"] = this->fileName;
+    json["tableName"] = this->ui->tableName->text();
+    json["sqlitePath"] = this->ui->sqlite_path_input->text();
+
+    QJsonDocument doc(json);
+    file.write(doc.toJson());
+    file.close();
+
+    QMessageBox::information(this, "Configuration sauvegardée", "La configuration a été sauvegardée avec succès");
+}
+
+void InsertWindow::loadConfig() {
+    QFile file(qApp->applicationDirPath() + "/config/databse_config.json");
+    if (!file.exists()) {
+        QMessageBox::warning(this, "Fichier de configuration introuvable",
+                             "Aucune configuration n'a été sauvegardée");
+        return;
+    }
+
+    if (!file.open(QIODevice::ReadOnly)) {
+        QMessageBox::critical(this, "Erreur", "Impossible d'ouvrir le fichier de configuration");
+        return;
+    }
+
+    const QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
+    const QJsonObject json = doc.object();
+
+    this->ui->database_box->setCurrentText(json["driver"].toString());
+    this->ui->hostInput->setText(json["host"].toString());
+    this->ui->userInput->setText(json["user"].toString());
+    this->ui->passwordInput->setText(json["password"].toString());
+    this->ui->databaseInput->setText(json["database"].toString());
+    this->ui->portInput->setText(json["port"].toString());
+    this->ui->database_box->setCurrentText(json["connectionType"].toString());
+    this->ui->sqlite_path_input->setText(json["sqlitePath"].toString());
+
+    this->connectToDb();
+}
+
 void InsertWindow::clearTable() {
     QMessageBox::StandardButton reply;
     reply = QMessageBox::question(this, "Effacer le fichier",
@@ -408,7 +550,7 @@ void InsertWindow::addLog(const QString &message) {
     this->ui->debugEdit->append(message);
 }
 
-void InsertWindow::set_connected(const bool connected) {
+void InsertWindow::setConnected(const bool connected) {
     if (connected) {
         this->ui->stateButton->setIcon(QIcon::fromTheme("network-connect"));
         this->ui->stateButton->setToolTip("Connecté");
@@ -426,9 +568,9 @@ void InsertWindow::set_connected(const bool connected) {
             "QPushButton:pressed {background-color: #FF8F00;}");
 }
 
-bool InsertWindow::connect_to_db() {
+bool InsertWindow::connectToDb() {
     try {
-        if (database.isOpen()) {
+        if (this->database.isOpen()) {
             QMessageBox::warning(this, "Déjà connecté", "Vous êtes déjà connecté à une base de données");
             return false;
         }
@@ -443,7 +585,7 @@ bool InsertWindow::connect_to_db() {
 
             this->database = QSqlDatabase::addDatabase(this->connectionType);
             this->database.setDatabaseName(path.trimmed());
-            addLog("Connexion à la base de données SQLite avec le chemin : " + path);
+            this->addLog("Connexion à la base de données SQLite avec le chemin : " + path);
 
         } else {
             const QString host = this->ui->hostInput->text();
@@ -473,7 +615,7 @@ bool InsertWindow::connect_to_db() {
             return false;
         }
 
-        set_connected(this->database.isOpen());
+        this->setConnected(this->database.isOpen());
         return this->database.isOpen();
     }
     catch (const std::exception &e) {

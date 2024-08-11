@@ -21,6 +21,8 @@ public:
 
     void addToolbar();
 
+    void addMenuBar();
+
     void openFile();
 
     void insertFile();
@@ -29,15 +31,21 @@ public:
 
     void addLog(const QString &message);
 
-    void set_connected(bool connected);
+    void setConnected(bool connected);
 
-    bool connect_to_db();
+    bool connectToDb();
 
     void dropAndCreateTable();
 
     void alterTable();
 
+    QString alterColumn(const QString &column);
+
     void loadCSV();
+
+    void saveConfig();
+
+    void loadConfig();
 
 private:
     Ui::InsertWindow *ui;
