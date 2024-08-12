@@ -39,8 +39,6 @@ public:
 
     void alterTable();
 
-    QString alterColumn(const QString &column);
-
     void loadCSV();
 
     void saveConfig();

@@ -25,15 +25,13 @@ into different database management systems like MySQL, PostgreSQL or SQLite.
 <input type="checkbox" style="margin-right: 10px" checked>
 </label> From CSV file <br>
 
-## Platforms
+## Platforms & Requirements
 
 <div align="center">
 <img src="https://img.shields.io/badge/OS-MacOS-informational?style=flat&logo=apple&logoColor=white&color=2bbc8a" alt="MacOS" />
 <img src="https://img.shields.io/badge/OS-Linux-informational?style=flat&logo=linux&logoColor=white&color=2bbc8a" alt="Linux" />
 <img src="https://img.shields.io/badge/OS-Windows-informational?style=flat&logo=windows&logoColor=white&color=2bbc8a" alt="Windows" />
 </div>
-
-## Requirements
 
 <div align="center">
 
@@ -101,6 +99,23 @@ make
 ```bash
 ./DataStorm
 ```
+
+## Notes
+
+<ul>
+<li>
+Does not use LOAD DATA INFILE because it's required to have the FILE privilege to use it.
+</li>
+<li>
+Does not use the COPY command because it's required to have the SUPERUSER privilege to use it.
+</li>
+<li>
+Use the INSERT command to insert the data into the database despite not being the most efficient way.
+</li>
+<li>
+Does not use the BULK INSERT command because it's only available for SQL Server.
+</li>
+</ul>
 
 ## Benchmark
 

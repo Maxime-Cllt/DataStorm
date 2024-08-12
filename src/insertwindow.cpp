@@ -12,6 +12,8 @@
 #include <QInputDialog>
 #include <QJsonObject>
 #include <QJsonDocument>
+#include <thread>
+#include <QThread>
 
 InsertWindow::InsertWindow(QWidget *parent)
         : QMainWindow(parent), ui(new Ui::InsertWindow) {
@@ -220,7 +222,9 @@ void InsertWindow::loadCSV() {
 
         if (++rowCount % batchSize == 0) {
             database.commit();
-            this->ui->progressBar->setValue((int) rowCount / batchSize * 100);
+            database.transaction();
+            QMetaObject::invokeMethod(this->ui->progressBar, "setValue", Qt::QueuedConnection,
+                                      Q_ARG(int, (int) ((rowCount / (double) this->headers.size()) * 100)));
         }
     }
 
@@ -240,55 +244,72 @@ void InsertWindow::loadCSV() {
     file.close();
 }
 
+void InsertWindow::alterTable() {
+    const QString tableName = this->ui->tableName->text().trimmed();
+    QStringList alterStatements;
+    std::vector<std::thread> threads;
+    std::map<QString, int> maxLengths;
+    QSqlQuery query(this->database);
 
-QString InsertWindow::alterColumn(const QString &column) {
-    QSqlQuery query;
-    QString sql = QString("SELECT MAX(LENGTH(%1)) FROM %2").arg(column).arg(this->ui->tableName->text().trimmed());
+    auto getColumnMaxLength = [this, &maxLengths, &tableName](const QString &header) {
+        const QString connectionName =
+                "connection_" + QString::number(reinterpret_cast<uintptr_t>(QThread::currentThreadId()));
 
-    if (!query.exec(sql)) {
-        addLog("Erreur lors de la récupération de la longueur maximale de la colonne " + column + " : " +
-               query.lastError().text());
-        return "";
-    }
+        QSqlDatabase db = QSqlDatabase::addDatabase(this->database.driverName(), connectionName);
+        db.setDatabaseName(this->database.databaseName());
+        db.setHostName(this->database.hostName());
+        db.setUserName(this->database.userName());
+        db.setPassword(this->database.password());
 
-    if (!query.next()) {
-        this->addLog("Impossible de récupérer la longueur maximale de la colonne " + column);
-        return "";
-    }
+        if (!db.open()) return;
 
-    int maxLength = query.value(0).toInt();
-    if (maxLength == 0) {
-        maxLength = 1;
-    }
-    QString alterSQL;
+        {
+            QSqlQuery query(db);
+            QString sql = "SELECT MAX(LENGTH(" + header + ")) FROM " + tableName;
+            if (!query.exec(sql)) {
+                addLog("Erreur lors de la récupération de la longueur maximale de la colonne : " +
+                       query.lastError().text());
+                maxLengths[header] = 1;
+            } else if (query.next()) {
+                int maxLength = query.value(0).toInt();
+                maxLengths[header] = (maxLength == 0) ? 1 : maxLength;
+            } else {
+                maxLengths[header] = 1;
+            }
+        }
 
-    QMap<QString, QString> sqlMap = {
-            {"QSQLITE",  "ALTER TABLE %1 ADD COLUMN %2 VARCHAR(%3)"},
-            {"QODBC",    "ALTER TABLE %1 ALTER COLUMN %2 VARCHAR(%3)"},
-            {"QMYSQL",   "ALTER TABLE %1 MODIFY COLUMN %2 VARCHAR(%3)"},
-            {"QMARIADB", "ALTER TABLE %1 MODIFY COLUMN %2 VARCHAR(%3)"},
-            {"QPSQL",    "ALTER TABLE %1 ALTER COLUMN %2 TYPE VARCHAR(%3)"}
+        db.close();
+        QSqlDatabase::removeDatabase(connectionName);
     };
 
-    if (sqlMap.contains(this->connectionType)) {
-        alterSQL = sqlMap[this->connectionType].arg(
-                this->ui->tableName->text().trimmed()).arg(column).arg(maxLength);
-    } else {
-        addLog("Le driver de la base de données n'est pas supporté");
+    for (const auto &header: this->headers) {
+        threads.emplace_back(getColumnMaxLength, header);
     }
 
-    return alterSQL;
-}
-
-void InsertWindow::alterTable() {
-    QSqlQuery query;
-    QStringList alterStatements;
+    for (auto &thread: threads) {
+        if (thread.joinable()) {
+            thread.join();
+        }
+    }
 
     for (const auto &header: this->headers) {
-        alterStatements.append(this->alterColumn(header));
+        int maxLength = maxLengths[header];
+        const QMap<QString, QString> types = {
+                {"QSQLITE",  header + " VARCHAR(" + QString::number(maxLength) + ")"},
+                {"QMARIADB", "ALTER TABLE " + tableName + " MODIFY COLUMN " + header + " VARCHAR(" +
+                             QString::number(maxLength) + ")"},
+                {"QMYSQL",   "ALTER TABLE " + tableName + " MODIFY COLUMN " + header + " VARCHAR(" +
+                             QString::number(maxLength) + ")"},
+                {"QODBC",    "ALTER TABLE " + tableName + " ALTER COLUMN " + header + " TYPE VARCHAR(" +
+                             QString::number(maxLength) + ")"},
+                {"QPSQL",    "ALTER TABLE " + tableName + " ALTER COLUMN " + header + " TYPE VARCHAR(" +
+                             QString::number(maxLength) + ")"}
+        };
+
+        alterStatements.append(types[this->database.driverName()]);
     }
 
-    if (database.driverName() == "QSQLITE") {
+    if (this->connectionType == "QSQLITE") {
         QString createTableSQL = "CREATE TABLE " + this->ui->tableName->text().trimmed() + "_new (";
         for (const auto &alterSQL: alterStatements) {
             createTableSQL += alterSQL + ", ";
@@ -329,14 +350,15 @@ void InsertWindow::alterTable() {
 void InsertWindow::dropAndCreateTable() {
     QSqlQuery query;
     QString sql;
+    const QString tableName = this->ui->tableName->text().trimmed();
 
-    sql = "DROP TABLE IF EXISTS " + this->ui->tableName->text() + ";";
+    sql = "DROP TABLE IF EXISTS " + tableName + ";";
     if (!query.exec(sql)) {
         addLog("Erreur lors de la suppression de la table : " + query.lastError().text());
         return;
     }
 
-    sql = "CREATE TABLE " + this->ui->tableName->text() + " (";
+    sql = "CREATE TABLE " + tableName + " (";
     for (int i = 0; i < this->headers.size(); ++i) {
         sql += this->headers[i] + " TEXT";
         if (i < this->headers.size() - 1) sql += ", ";
