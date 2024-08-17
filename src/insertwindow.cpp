@@ -12,8 +12,6 @@
 #include <QInputDialog>
 #include <QJsonObject>
 #include <QJsonDocument>
-#include <thread>
-#include <QThread>
 
 InsertWindow::InsertWindow(QWidget *parent)
         : QMainWindow(parent), ui(new Ui::InsertWindow) {
@@ -211,20 +209,33 @@ void InsertWindow::loadCSV() {
     const int batchSize = 10000;
     unsigned int rowCount = 0;
 
+    QMap<QString, int> maxLengths;
+    for (const auto &header: this->headers) {
+        maxLengths[header] = 0;
+    }
+
     while (std::getline(file, line)) {
         QStringList values = QString::fromStdString(line).split(this->separator);
+
         for (int i = 0; i < values.size(); ++i) {
-            query.bindValue(i, values[i]);
+            const QString &value = values[i];
+            const QString header = this->headers[i];
+            const int length = static_cast<int>(value.length());
+            if (length > maxLengths[header]) {
+                maxLengths[header] = length;
+            }
+            query.bindValue(i, value);
         }
+
         if (!query.exec()) {
-            addLog("Erreur lors de l'insertion de la ligne : " + query.lastError().text());
+            this->addLog("Erreur lors de l'insertion de la ligne : " + query.lastError().text());
         }
 
         if (++rowCount % batchSize == 0) {
             database.commit();
             database.transaction();
-            QMetaObject::invokeMethod(this->ui->progressBar, "setValue", Qt::QueuedConnection,
-                                      Q_ARG(int, (int) ((rowCount / (double) this->headers.size()) * 100)));
+//            QMetaObject::invokeMethod(this->ui->progressBar, "setValue", Qt::QueuedConnection,
+//                                      Q_ARG(int, (int) ((rowCount / (double) this->headers.size()) * 100)));
         }
     }
 
@@ -234,116 +245,58 @@ void InsertWindow::loadCSV() {
            QString::number(std::chrono::duration_cast<std::chrono::milliseconds>(
                    std::chrono::high_resolution_clock::now() - start).count()) + " ms");
 
-    // Optimisation de la table pour réduire l'espace disque
-    this->alterTable();
+    // Optimisation de la table pour réduire l'espace disque en modifiant la taille des colonnes en arrière-plan
+    this->alterTable(maxLengths);
 
     addLog("Temps d'exécution total: " +
            QString::number(std::chrono::duration_cast<std::chrono::milliseconds>(
                    std::chrono::high_resolution_clock::now() - start).count()) + " ms");
 
     file.close();
+    query.clear();
+    query.finish();
 }
 
-void InsertWindow::alterTable() {
-    const QString tableName = this->ui->tableName->text().trimmed();
-    QStringList alterStatements;
-    std::vector<std::thread> threads;
-    std::map<QString, int> maxLengths;
+void InsertWindow::alterTable(const QMap<QString, int> &maxLenghtColumns) {
+    const QString &tableName = this->ui->tableName->text().trimmed();
+    QStringList columnDefinitions;
     QSqlQuery query(this->database);
 
-    auto getColumnMaxLength = [this, &maxLengths, &tableName](const QString &header) {
-        const QString connectionName =
-                "connection_" + QString::number(reinterpret_cast<uintptr_t>(QThread::currentThreadId()));
-
-        QSqlDatabase db = QSqlDatabase::addDatabase(this->database.driverName(), connectionName);
-        db.setDatabaseName(this->database.databaseName());
-        db.setHostName(this->database.hostName());
-        db.setUserName(this->database.userName());
-        db.setPassword(this->database.password());
-
-        if (!db.open()) return;
-
-        {
-            QSqlQuery query(db);
-            QString sql = "SELECT MAX(LENGTH(" + header + ")) FROM " + tableName;
-            if (!query.exec(sql)) {
-                addLog("Erreur lors de la récupération de la longueur maximale de la colonne : " +
-                       query.lastError().text());
-                maxLengths[header] = 1;
-            } else if (query.next()) {
-                int maxLength = query.value(0).toInt();
-                maxLengths[header] = (maxLength == 0) ? 1 : maxLength;
-            } else {
-                maxLengths[header] = 1;
-            }
-        }
-
-        db.close();
-        QSqlDatabase::removeDatabase(connectionName);
-    };
-
     for (const auto &header: this->headers) {
-        threads.emplace_back(getColumnMaxLength, header);
+        const int maxLength = maxLenghtColumns[header];
+        QString columnDef = header + " VARCHAR(" + QString::number(maxLength) + ")";
+        columnDefinitions.append(columnDef);
     }
 
-    for (auto &thread: threads) {
-        if (thread.joinable()) {
-            thread.join();
-        }
+    QString createTableSQL = "CREATE TABLE " + tableName + "_new (";
+    for (const auto &columnDef: columnDefinitions) {
+        createTableSQL += columnDef + ", ";
+    }
+    createTableSQL.chop(2);
+    createTableSQL += ")";
+
+    const QString copyDataSQL = QString("INSERT INTO %1_new SELECT * FROM %1").arg(tableName);
+    const QString dropOldTableSQL = QString("DROP TABLE %1").arg(tableName);
+    const QString renameTableSQL = QString("ALTER TABLE %1_new RENAME TO %1").arg(tableName);
+
+    if (!query.exec(createTableSQL)) {
+        addLog("Erreur lors de la création de la nouvelle table : " + query.lastError().text());
+        return;
     }
 
-    for (const auto &header: this->headers) {
-        int maxLength = maxLengths[header];
-        const QMap<QString, QString> types = {
-                {"QSQLITE",  header + " VARCHAR(" + QString::number(maxLength) + ")"},
-                {"QMARIADB", "ALTER TABLE " + tableName + " MODIFY COLUMN " + header + " VARCHAR(" +
-                             QString::number(maxLength) + ")"},
-                {"QMYSQL",   "ALTER TABLE " + tableName + " MODIFY COLUMN " + header + " VARCHAR(" +
-                             QString::number(maxLength) + ")"},
-                {"QODBC",    "ALTER TABLE " + tableName + " ALTER COLUMN " + header + " TYPE VARCHAR(" +
-                             QString::number(maxLength) + ")"},
-                {"QPSQL",    "ALTER TABLE " + tableName + " ALTER COLUMN " + header + " TYPE VARCHAR(" +
-                             QString::number(maxLength) + ")"}
-        };
-
-        alterStatements.append(types[this->database.driverName()]);
+    if (!query.exec(copyDataSQL)) {
+        addLog("Erreur lors de la copie des données : " + query.lastError().text());
+        return;
     }
 
-    if (this->connectionType == "QSQLITE") {
-        QString createTableSQL = "CREATE TABLE " + this->ui->tableName->text().trimmed() + "_new (";
-        for (const auto &alterSQL: alterStatements) {
-            createTableSQL += alterSQL + ", ";
-        }
-        createTableSQL.chop(2);
-        createTableSQL += ")";
+    if (!query.exec(dropOldTableSQL)) {
+        addLog("Erreur lors de la suppression de l'ancienne table : " + query.lastError().text());
+        return;
+    }
 
-        QString copyDataSQL = QString("INSERT INTO %1_new SELECT * FROM %1").arg(this->ui->tableName->text().trimmed());
-        QString dropOldTableSQL = QString("DROP TABLE %1").arg(this->ui->tableName->text().trimmed());
-        QString renameTableSQL = QString("ALTER TABLE %1_new RENAME TO %1").arg(this->ui->tableName->text().trimmed());
-
-        if (!query.exec(createTableSQL)) {
-            addLog("Erreur lors de la création de la nouvelle table : " + query.lastError().text());
-            return;
-        }
-        if (!query.exec(copyDataSQL)) {
-            addLog("Erreur lors de la copie des données : " + query.lastError().text());
-            return;
-        }
-        if (!query.exec(dropOldTableSQL)) {
-            addLog("Erreur lors de la suppression de l'ancienne table : " + query.lastError().text());
-            return;
-        }
-        if (!query.exec(renameTableSQL)) {
-            addLog("Erreur lors du renommage de la nouvelle table : " + query.lastError().text());
-            return;
-        }
-    } else {
-        for (const auto &alterSQL: alterStatements) {
-            if (!query.exec(alterSQL)) {
-                addLog("Erreur lors de la modification de la colonne : " + query.lastError().text());
-                return;
-            }
-        }
+    if (!query.exec(renameTableSQL)) {
+        addLog("Erreur lors du renommage de la nouvelle table : " + query.lastError().text());
+        return;
     }
 }
 
@@ -629,7 +582,7 @@ bool InsertWindow::connectToDb() {
             this->database.setDatabaseName(database_name.trimmed());
             this->database.setPort((port.trimmed()).toInt());
 
-            addLog("Connexion à la base de données avec les paramètres suivants :");
+            addLog("Tentative de connexion à la base de données...");
         }
 
         if (!this->database.open()) {

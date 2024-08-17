@@ -3,6 +3,10 @@
 <h1>DataStorm</h1>
 </div>
 
+<div align="center">
+<img src="/assets/screen.png" width="350px" alt="Datastorm">
+</div>
+
 ## Description
 
 DataStorm is a software that insert into a database the data of a CSV or Excel file. The software is able to insert the
@@ -24,6 +28,10 @@ into different database management systems like MySQL, PostgreSQL or SQLite.
 <label>
 <input type="checkbox" style="margin-right: 10px" checked>
 </label> From CSV file <br>
+<label>
+<input type="checkbox" style="margin-right: 10px" checked>
+</label> Don't require <span style="font-weight: bold;">ANY</span> privilege to insert the data <br>
+<label>
 
 ## Platforms & Requirements
 
@@ -125,16 +133,31 @@ Does not use the BULK INSERT command because it's only available for SQL Server.
         <th align="center" style="font-weight: bolder; border: 1px solid white;">File</th>
         <th align="center" style="font-weight: bolder; border: 1px solid white;">Size (Ko)</th>
         <th align="center" style="font-weight: bolder; border: 1px solid white;">Time to import (ms)</th>
+        <th align="center" style="font-weight: bolder; border: 1px solid white;">DBMS</th>
+    </tr>
+<tr>
+        <td align="center" style="border: 1px solid white;">csv</td>
+        <td align="center" style="border: 1px solid white;">2345</td>
+        <td align="center" style="border: 1px solid white;">180</td>
+        <td align="center" style="border: 1px solid white;">SQLite</td>
     </tr>
     <tr>
         <td align="center" style="border: 1px solid white;">csv</td>
         <td align="center" style="border: 1px solid white;">2345</td>
-        <td align="center" style="border: 1px solid white;">180</td>
+        <td align="center" style="border: 1px solid white;">1745</td>
+        <td align="center" style="border: 1px solid white;">MySQL</td>
     </tr>
     <tr>
         <td align="center" style="border: 1px solid white;">csv</td>
         <td align="center" style="border: 1px solid white;">21 105</td>
         <td align="center" style="border: 1px solid white;">1300</td>
+        <td align="center" style="border: 1px solid white;">SQLite</td>
+    </tr>
+<tr>
+        <td align="center" style="border: 1px solid white;">csv</td>
+        <td align="center" style="border: 1px solid white;">21 105</td>
+        <td align="center" style="border: 1px solid white;">10256</td>
+        <td align="center" style="border: 1px solid white;">MySQL</td>
     </tr>
 </table>
 </div>

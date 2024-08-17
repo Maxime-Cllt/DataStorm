@@ -4,8 +4,6 @@
 #include <QMainWindow>
 #include <QPushButton>
 #include <QSqlDatabase>
-#include <fstream>
-#include <string>
 
 namespace Ui {
     class InsertWindow;
@@ -37,7 +35,7 @@ public:
 
     void dropAndCreateTable();
 
-    void alterTable();
+    void alterTable(const QMap<QString, int> &maxLenghtColumns);
 
     void loadCSV();
 
