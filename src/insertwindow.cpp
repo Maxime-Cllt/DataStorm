@@ -1,6 +1,6 @@
 #include "insertwindow.h"
 #include "ui_insertwindow.h"
-#include "util.h"
+#include "datastorm.h"
 #include <QToolBar>
 #include <QFileDialog>
 #include <QMessageBox>
@@ -12,6 +12,7 @@
 #include <QInputDialog>
 #include <QJsonObject>
 #include <QJsonDocument>
+#include <QTimer>
 
 InsertWindow::InsertWindow(QWidget *parent)
         : QMainWindow(parent), ui(new Ui::InsertWindow) {
@@ -83,6 +84,22 @@ InsertWindow::InsertWindow(QWidget *parent)
     connect(clearButton, &QPushButton::clicked, this, &InsertWindow::clearTable);
     connect(openButton, &QPushButton::clicked, this, &InsertWindow::openFile);
     connect(this->ui->connectButton, &QPushButton::clicked, this, &InsertWindow::connectToDb);
+    connect(this->ui->connectButton, &QPushButton::pressed, [this]() {
+        QTimer::singleShot(5000, [this]() {
+            if (!this->database.isOpen()) return;
+
+            QMessageBox::StandardButton reply;
+            reply = QMessageBox::question(this, "Déconnexion",
+                                          "Voulez-vous vous déconnecter de la base de données ?",
+                                          QMessageBox::Yes | QMessageBox::No);
+            if (reply == QMessageBox::Yes) {
+                this->database.close();
+                this->setConnected(false);
+                this->addLog("Déconnecté de la base de données");
+            }
+
+        });
+    });
     connect(this->ui->database_box, QOverload<int>::of(&QComboBox::currentIndexChanged), [this](const int index) {
 
         this->connectionType = this->ui->database_box->currentText();
@@ -133,7 +150,7 @@ void InsertWindow::openFile() {
                                                   "CSV Files (*.csv);;Excel Files (*.xlsx)");
     if (this->fileName.isEmpty()) return;
 
-    QStringList parts = this->fileName.split("/");
+    const QStringList parts = this->fileName.split("/");
     QFile file(this->fileName);
     this->ui->fileName->setAlignment(Qt::AlignCenter);
     this->ui->fileName->setText(
@@ -141,6 +158,7 @@ void InsertWindow::openFile() {
 
     this->ui->tableName->setText(get_name_for_table(this->fileName));
     addLog("Fichier ouvert : " + this->fileName);
+    file.close();
 }
 
 void InsertWindow::insertFile() {
@@ -157,13 +175,10 @@ void InsertWindow::insertFile() {
     this->ui->progressBar->setVisible(true);
     this->ui->progressBar->setValue(0);
 
-    QString type = getFileExtension(this->fileName.toStdString()).c_str();
+    const std::string type = getFileExtension(this->fileName.toStdString());
     if (type == "csv") {
         this->loadCSV();
-    } else {
-        QMessageBox::warning(nullptr, "Fichier non supporté", "Le fichier n'est pas supporté");
-    }
-
+    } else QMessageBox::warning(nullptr, "Fichier non supporté", "Le fichier n'est pas supporté");
     this->ui->progressBar->setValue(100);
 }
 
@@ -175,7 +190,7 @@ void InsertWindow::loadCSV() {
         return;
     }
 
-    auto start = std::chrono::high_resolution_clock::now();
+    const auto start = std::chrono::high_resolution_clock::now();
 
     std::string line;
     std::getline(file, line);
@@ -193,7 +208,7 @@ void InsertWindow::loadCSV() {
            QString::number(std::chrono::duration_cast<std::chrono::milliseconds>(
                    std::chrono::high_resolution_clock::now() - start).count()) + " ms");
 
-    QSqlQuery query;
+    QSqlQuery query(this->database);
     QString insertSQL = "INSERT INTO " + this->ui->tableName->text() + " (";
     insertSQL += this->headers.join(", ") + ") VALUES (";
     insertSQL += QString("?, ").repeated(this->headers.size());
@@ -206,23 +221,22 @@ void InsertWindow::loadCSV() {
         return;
     }
 
-    const int batchSize = 10000;
+    const short batchSize = 1000;
     unsigned int rowCount = 0;
-
     QMap<QString, int> maxLengths;
     for (const auto &header: this->headers) {
         maxLengths[header] = 0;
     }
+    QStringList values;
 
     while (std::getline(file, line)) {
-        QStringList values = QString::fromStdString(line).split(this->separator);
+        values = QString::fromStdString(line).split(this->separator, Qt::KeepEmptyParts);
 
         for (int i = 0; i < values.size(); ++i) {
             const QString &value = values[i];
-            const QString header = this->headers[i];
             const int length = static_cast<int>(value.length());
-            if (length > maxLengths[header]) {
-                maxLengths[header] = length;
+            if (length > maxLengths[this->headers[i]]) {
+                maxLengths[this->headers[i]] = length;
             }
             query.bindValue(i, value);
         }
@@ -231,7 +245,7 @@ void InsertWindow::loadCSV() {
             this->addLog("Erreur lors de l'insertion de la ligne : " + query.lastError().text());
         }
 
-        if (++rowCount % batchSize == 0) {
+        if (++rowCount == batchSize) {
             database.commit();
             database.transaction();
 //            QMetaObject::invokeMethod(this->ui->progressBar, "setValue", Qt::QueuedConnection,
@@ -298,10 +312,12 @@ void InsertWindow::alterTable(const QMap<QString, int> &maxLenghtColumns) {
         addLog("Erreur lors du renommage de la nouvelle table : " + query.lastError().text());
         return;
     }
+    query.clear();
+    query.finish();
 }
 
 void InsertWindow::dropAndCreateTable() {
-    QSqlQuery query;
+    QSqlQuery query(this->database);
     QString sql;
     const QString tableName = this->ui->tableName->text().trimmed();
 
@@ -323,6 +339,8 @@ void InsertWindow::dropAndCreateTable() {
         QMessageBox::critical(nullptr, "Erreur", "Impossible de créer la table : " + query.lastError().text());
         return;
     }
+    query.clear();
+    query.finish();
 }
 
 void InsertWindow::addToolbar() {
