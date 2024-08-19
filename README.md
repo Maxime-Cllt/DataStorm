@@ -136,22 +136,22 @@ Does not use the BULK INSERT command because it's only available for SQL Server.
     </tr>
 <tr>
         <td align="center" style="border: 1px solid white;">2345</td>
-        <td align="center" style="border: 1px solid white;">160</td>
+        <td align="center" style="border: 1px solid white;">132</td>
         <td align="center" style="border: 1px solid white;">SQLite</td>
     </tr>
     <tr>
         <td align="center" style="border: 1px solid white;">2345</td>
-        <td align="center" style="border: 1px solid white;">1175</td>
+        <td align="center" style="border: 1px solid white;">922</td>
         <td align="center" style="border: 1px solid white;">MySQL</td>
     </tr>
     <tr>
         <td align="center" style="border: 1px solid white;">21 105</td>
-        <td align="center" style="border: 1px solid white;">1153</td>
+        <td align="center" style="border: 1px solid white;">1148</td>
         <td align="center" style="border: 1px solid white;">SQLite</td>
     </tr>
 <tr>
         <td align="center" style="border: 1px solid white;">21 105</td>
-        <td align="center" style="border: 1px solid white;">9539</td>
+        <td align="center" style="border: 1px solid white;">7788</td>
         <td align="center" style="border: 1px solid white;">MySQL</td>
     </tr>
 </table>

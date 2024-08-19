@@ -327,7 +327,15 @@ void InsertWindow::dropAndCreateTable() {
         return;
     }
 
-    sql = "CREATE TABLE " + tableName + " (";
+    const QMap<QString, QString> sqlTemporaryTables = {
+            {"QSQLITE",  "CREATE TEMP TABLE "},
+            {"QMARIADB", "CREATE TEMPORARY TABLE "},
+            {"QMYSQL",   "CREATE TEMPORARY TABLE "},
+            {"QODBC",    "CREATE TEMPORARY TABLE "},
+            {"QPSQL",    "CREATE TEMPORARY TABLE "}
+    };
+
+    sql = sqlTemporaryTables[this->connectionType] + tableName + " (";
     for (int i = 0; i < this->headers.size(); ++i) {
         sql += this->headers[i] + " TEXT";
         if (i < this->headers.size() - 1) sql += ", ";
