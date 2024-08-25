@@ -9,7 +9,6 @@
 #include <QSqlQuery>
 #include <QSqlError>
 #include <iostream>
-#include <fstream>
 #include <QInputDialog>
 #include <QJsonObject>
 #include <QJsonDocument>
@@ -85,22 +84,6 @@ InsertWindow::InsertWindow(QWidget *parent)
     connect(clearButton, &QPushButton::clicked, this, &InsertWindow::clearUi);
     connect(openButton, &QPushButton::clicked, this, &InsertWindow::openFile);
     connect(this->ui->connectButton, &QPushButton::clicked, this, &InsertWindow::connectToDb);
-    connect(this->ui->connectButton, &QPushButton::pressed, [this]() {
-        QTimer::singleShot(5000, [this]() {
-            if (!this->database.isOpen()) return;
-
-            QMessageBox::StandardButton reply;
-            reply = QMessageBox::question(this, "Déconnexion",
-                                          "Voulez-vous vous déconnecter de la base de données ?",
-                                          QMessageBox::Yes | QMessageBox::No);
-            if (reply == QMessageBox::Yes) {
-                this->database.close();
-                this->setConnected(false);
-                this->addLog("Déconnecté de la base de données");
-            }
-
-        });
-    });
     connect(this->ui->database_box, QOverload<int>::of(&QComboBox::currentIndexChanged), [this](const int index) {
 
         this->connectionType = this->ui->database_box->currentText();
@@ -148,7 +131,7 @@ InsertWindow::~InsertWindow() {
 void InsertWindow::openFile() {
 
     this->fileName = QFileDialog::getOpenFileName(this, "Ouvrir un fichier", qApp->applicationDirPath(),
-                                                  "CSV Files (*.csv);;Excel Files (*.xlsx)");
+                                                  "CSV Files (*.csv);;Text Files (*.txt);;All Files (*)");
     if (this->fileName.isEmpty()) return;
 
     const QStringList parts = this->fileName.split("/");
@@ -180,7 +163,6 @@ void InsertWindow::insertFile() {
     if (type == "csv") {
         CsvLoader loader(*this);
         loader.loadCSV();
-//        this->loadCSV();
     } else QMessageBox::warning(nullptr, "Fichier non supporté", "Le fichier n'est pas supporté");
     this->ui->progressBar->setValue(100);
 }

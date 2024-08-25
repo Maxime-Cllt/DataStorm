@@ -50,7 +50,6 @@ private:
     QPushButton *insertSqlButton{};
     QPushButton *openButton{};
     QSqlDatabase database;
-    QStringList headers;
     QString connectionType;
 };
 
