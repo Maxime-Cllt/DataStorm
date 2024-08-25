@@ -1,7 +1,7 @@
 #ifndef DATASTORM_DATASTORM_H
 #define DATASTORM_DATASTORM_H
 
-QStringList normalizeColumnNames(const QStringList &columnNames) {
+inline QStringList normalizeColumnNames(const QStringList &columnNames) {
     QStringList normalizedColumnNames;
     for (const QString &columnName: columnNames) {
         QString normalizedColumnName = columnName;
@@ -12,7 +12,7 @@ QStringList normalizeColumnNames(const QStringList &columnNames) {
     return normalizedColumnNames;
 }
 
-QString get_name_for_table(const QString &fileName) {
+inline  QString get_name_for_table(const QString &fileName) {
     const QStringList parts = fileName.contains("/") ? fileName.split("/") : fileName.split("\\");
     QString name = parts[parts.size() - 1];
     name = name.split(".")[0];
@@ -21,7 +21,7 @@ QString get_name_for_table(const QString &fileName) {
     return name;
 }
 
-std::string getFileExtension(const std::string &filename) {
+inline std::string getFileExtension(const std::string &filename) {
     const size_t dotPos = filename.find_last_of('.');
     if (dotPos == std::string::npos) return "";
     return filename.substr(dotPos + 1);

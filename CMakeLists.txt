@@ -31,6 +31,8 @@ add_executable(DataStorm
         src/insertwindow.cpp
         src/insertwindow.ui
         src/datastorm.h
+        src/CsvLoader.cpp
+        src/CsvLoader.h
 )
 
 target_link_libraries(DataStorm
