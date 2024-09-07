@@ -7,9 +7,22 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 if (CMAKE_BUILD_TYPE STREQUAL "Release")
     message("Release mode")
-    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O2 -DNDEBUG -march=native")
-    set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -O2 -DNDEBUG -march=native")
-    set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} -O2 -DNDEBUG -march=native")
+
+    # Compiler flags
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -DNDEBUG -march=native -flto -ffast-math -funroll-loops -fno-rtti")
+    set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -O3 -DNDEBUG -march=native -flto -ffast-math -funroll-loops  -fno-rtti")
+
+    # Linker flags
+    set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} -O3 -DNDEBUG -march=native -flto")
+    set(CMAKE_SHARED_LINKER_FLAGS_RELEASE "${CMAKE_SHARED_LINKER_FLAGS_RELEASE} -O3 -DNDEBUG -march=native -flto")
+    set(CMAKE_MODULE_LINKER_FLAGS_RELEASE "${CMAKE_MODULE_LINKER_FLAGS_RELEASE} -O3 -DNDEBUG -march=native -flto")
+    set(CMAKE_STATIC_LINKER_FLAGS_RELEASE "${CMAKE_STATIC_LINKER_FLAGS_RELEASE} -O3 -DNDEBUG -march=native -flto")
+
+    # General Linker flags for all builds
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -O3 -DNDEBUG -march=native -flto")
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -O3 -DNDEBUG -march=native -flto")
+    set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} -O3 -DNDEBUG -march=native -flto")
+
 else ()
     message("Debug mode")
     set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0 -g")
@@ -33,6 +46,8 @@ add_executable(DataStorm
         src/datastorm.h
         src/CsvLoader.cpp
         src/CsvLoader.h
+        src/DatabaseHelper.cpp
+        src/DatabaseHelper.h
 )
 
 target_link_libraries(DataStorm

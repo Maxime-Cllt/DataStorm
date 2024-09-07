@@ -6,6 +6,7 @@
 #include <QMessageBox>
 #include <QSqlQuery>
 #include <QSqlError>
+#include "DatabaseHelper.h"
 
 CsvLoader::CsvLoader(InsertWindow &insertWindow) : insertWindow(&insertWindow) {
     this->connectionType = insertWindow.getDatabase()->driverName();
@@ -56,8 +57,8 @@ void CsvLoader::loadCSV() {
         return;
     }
 
-    const short batchSize = 1000;
-    unsigned int rowCount = 0;
+    const u_int16_t batchSize = 1000;
+    uint32_t rowCount = 0;
 
     QMap<QString, int> maxLengths;
     for (const auto &header: this->headers) {
@@ -169,12 +170,12 @@ void CsvLoader::dropAndCreateTable() {
     QSqlQuery query(*this->insertWindow->getDatabase());
     const QString &tableName = this->insertWindow->getUi()->tableName->text().trimmed();
 
-    if (!query.exec(this->dropTableSQL(tableName))) {
+    if (!query.exec(DatabaseHelper::getDropTableSQL(this->connectionType, tableName))) {
         this->insertWindow->addLog("Erreur lors de la suppression de la table : " % query.lastError().text());
         return;
     }
 
-    if (!query.exec(this->createTempTableSQL())) {
+    if (!query.exec(DatabaseHelper::getCreateTempTableSQL(this->connectionType, tableName, this->headers))) {
         this->insertWindow->addLog("Erreur lors de la création de la table : " % query.lastError().text());
         QMessageBox::critical(nullptr, "Erreur", "Impossible de créer la table : " % query.lastError().text());
         return;
@@ -185,43 +186,3 @@ void CsvLoader::dropAndCreateTable() {
 }
 
 
-/**
- * Crée la requête SQL pour créer une table temporaire
- * @return La requête SQL
- */
-QString CsvLoader::createTempTableSQL() const {
-    QString sql;
-    const QString &tableName = this->insertWindow->getUi()->tableName->text().trimmed();
-    const int &headersSize = static_cast<int>(this->headers.size());
-    const QMap<QString, QString> &sqlTemporaryTables = {
-            {"QSQLITE",  "CREATE TEMP TABLE "},
-            {"QMARIADB", "CREATE TEMPORARY TABLE "},
-            {"QMYSQL",   "CREATE TEMPORARY TABLE "},
-            {"QODBC",    "CREATE TEMPORARY TABLE "},
-            {"QPSQL",    "CREATE TEMPORARY TABLE "}
-    };
-
-    sql = sqlTemporaryTables[this->connectionType] % tableName % "_temp (";
-    for (unsigned int i = 0; i < headersSize; ++i) {
-        sql += this->headers[i] % " TEXT";
-        if (i < headersSize - 1) sql += ", ";
-    }
-    sql += ")";
-    return sql;
-}
-
-/**
- * Crée la requête SQL pour supprimer une table
- * @param tableName Le nom de la table
- * @return La requête SQL
- */
-QString CsvLoader::dropTableSQL(const QString &tableName) const {
-    const QMap<QString, QString> &dropTableSQL = {
-            {"QSQLITE",  "DROP TABLE IF EXISTS "},
-            {"QMARIADB", "DROP TABLE IF EXISTS "},
-            {"QMYSQL",   "DROP TABLE IF EXISTS "},
-            {"QODBC",    "DROP TABLE "},
-            {"QPSQL",    "DROP TABLE IF EXISTS "}
-    };
-    return dropTableSQL[this->connectionType] % tableName;
-}

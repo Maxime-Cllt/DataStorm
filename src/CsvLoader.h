@@ -20,10 +20,6 @@ public:
 
     void optimiseTable(const QMap<QString, int> &maxLenghtColumns);
 
-    QString createTempTableSQL() const;
-
-    QString dropTableSQL(const QString &tableName) const;
-
 private:
     QStringList headers;
     char separator = ';';

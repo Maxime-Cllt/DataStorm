@@ -1,6 +1,12 @@
 #ifndef DATASTORM_DATASTORM_H
 #define DATASTORM_DATASTORM_H
 
+
+/**
+ * @file datastorm.h
+ * @brief Functions used for normalization column names and get their name for a sql table
+ * @return QStringList The normalized column names
+ */
 inline QStringList normalizeColumnNames(const QStringList &columnNames) {
     QStringList normalizedColumnNames;
     for (const QString &columnName: columnNames) {
@@ -12,6 +18,11 @@ inline QStringList normalizeColumnNames(const QStringList &columnNames) {
     return normalizedColumnNames;
 }
 
+/**
+ * @brief Get the name for a table from a file name
+ * @param fileName The file name
+ * @return The name for a table
+ */
 inline  QString get_name_for_table(const QString &fileName) {
     const QStringList parts = fileName.contains("/") ? fileName.split("/") : fileName.split("\\");
     QString name = parts[parts.size() - 1];
@@ -21,6 +32,11 @@ inline  QString get_name_for_table(const QString &fileName) {
     return name;
 }
 
+/**
+ * @brief Get the file extension from a file name
+ * @param filename The file name
+ * @return The file extension
+ */
 inline std::string getFileExtension(const std::string &filename) {
     const size_t dotPos = filename.find_last_of('.');
     if (dotPos == std::string::npos) return "";

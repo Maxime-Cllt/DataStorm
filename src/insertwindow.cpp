@@ -13,6 +13,7 @@
 #include <QJsonObject>
 #include <QJsonDocument>
 #include <QTimer>
+#include "DatabaseHelper.h"
 
 InsertWindow::InsertWindow(QWidget *parent)
         : QMainWindow(parent), ui(new Ui::InsertWindow) {
@@ -88,20 +89,20 @@ InsertWindow::InsertWindow(QWidget *parent)
 
         this->connectionType = this->ui->database_box->currentText();
 
-        if (connectionType == "QSQLITE") {
-            this->ui->portInput->setText("");
+        if (connectionType == DatabaseHelper::QSQLITE) {
+            this->ui->portInput->clear();
             this->ui->sqlite_path_input->setVisible(true);
             this->ui->sqlite_path_input->setEnabled(true);
             this->ui->sqlite_input_label->setVisible(true);
             this->ui->database_path_opener->setVisible(true);
             return;
-        } else if (connectionType == "QMARIADB") {
+        } else if (connectionType == DatabaseHelper::QMARIADB) {
             this->ui->portInput->setText("3307");
-        } else if (connectionType == "QMYSQL") {
+        } else if (connectionType == DatabaseHelper::QMYSQL) {
             this->ui->portInput->setText("3306");
-        } else if (connectionType == "QODBC") {
+        } else if (connectionType == DatabaseHelper::QODBC) {
             this->ui->portInput->setText("1433");
-        } else if (connectionType == "QPSQL") {
+        } else if (connectionType == DatabaseHelper::QPSQL) {
             this->ui->portInput->setText("5432");
         }
 
@@ -115,6 +116,7 @@ InsertWindow::InsertWindow(QWidget *parent)
                                                     "SQLite Files (*.sqlite *.db)");
         if (path.isEmpty()) return;
         this->ui->sqlite_path_input->setText(path);
+        this->ui->database_box->setCurrentText(DatabaseHelper::QSQLITE);
     });
 }
 
@@ -200,9 +202,7 @@ void InsertWindow::addToolbar() {
     clearButton->setVisible(false);
 
     // Ajouter un style matériel à la fenêtre
-    setStyleSheet("QMenuBar {background-color: #2196F3; color: white;}"
-                  "QMenuBar::item:selected {background-color: #1976D2;}"
-                  "QHeaderView::section {background-color: #2196F3; color: white;}"
+    setStyleSheet("QHeaderView::section {background-color: #2196F3; color: white;}"
                   "QTableWidget::item:selected {background-color: #BBDEFB; color: black;}"
                   "QTableWidget::item:selected:!active {color: black;}"
                   "QTableWidget {text-align: center;}"
@@ -392,7 +392,7 @@ bool InsertWindow::connectToDb() {
             return false;
         }
 
-        if (this->connectionType == "QSQLITE") {
+        if (this->connectionType == DatabaseHelper::QSQLITE) {
             QString path = this->ui->sqlite_path_input->text();
             if (path.isEmpty()) {
                 QMessageBox::warning(this, "Champ vide",
@@ -405,11 +405,11 @@ bool InsertWindow::connectToDb() {
             this->addLog("Connexion à la base de données SQLite avec le chemin : " + path);
 
         } else {
-            const QString host = this->ui->hostInput->text();
-            const QString user = this->ui->userInput->text();
-            const QString password = this->ui->passwordInput->text();
-            const QString database_name = this->ui->databaseInput->text();
-            const QString port = this->ui->portInput->text();
+            const QString &host = this->ui->hostInput->text().trimmed();
+            const QString &user = this->ui->userInput->text().trimmed();
+            const QString &password = this->ui->passwordInput->text().trimmed();
+            const QString &database_name = this->ui->databaseInput->text().trimmed();
+            const QString &port = this->ui->portInput->text().trimmed();
 
             if (host.isEmpty() || user.isEmpty() || password.isEmpty() || database_name.isEmpty() || port.isEmpty()) {
                 QMessageBox::warning(this, "Champs vides",
@@ -418,11 +418,11 @@ bool InsertWindow::connectToDb() {
             }
 
             this->database = QSqlDatabase::addDatabase(this->connectionType);
-            this->database.setHostName(host.trimmed());
-            this->database.setUserName(user.trimmed());
-            this->database.setPassword(password.trimmed());
-            this->database.setDatabaseName(database_name.trimmed());
-            this->database.setPort((port.trimmed()).toInt());
+            this->database.setHostName(host);
+            this->database.setUserName(user);
+            this->database.setPassword(password);
+            this->database.setDatabaseName(database_name);
+            this->database.setPort((quint16) port.toInt());
 
             addLog("Tentative de connexion à la base de données...");
         }
