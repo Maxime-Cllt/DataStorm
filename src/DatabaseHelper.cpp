@@ -23,8 +23,7 @@ QString DatabaseHelper::getDropTableSQL(const QString &connectionType, const QSt
 
 QString DatabaseHelper::getCreateTempTableSQL(const QString &connectionType, const QString &tableName,
                                               const QStringList &columnNames) {
-    QString sql;
-    const int &headersSize = static_cast<int>(columnNames.size());
+    const int16_t &headersSize = static_cast<int16_t>(columnNames.size());
     const QMap<QString, QString> &sqlTemporaryTables = {
             {"QSQLITE",  "CREATE TEMP TABLE "},
             {"QMARIADB", "CREATE TEMPORARY TABLE "},
@@ -32,8 +31,8 @@ QString DatabaseHelper::getCreateTempTableSQL(const QString &connectionType, con
             {"QODBC",    "CREATE TEMPORARY TABLE "},
             {"QPSQL",    "CREATE TEMPORARY TABLE "}
     };
-    sql = sqlTemporaryTables[connectionType] % tableName % "_temp (";
-    for (unsigned int i = 0; i < headersSize; ++i) {
+    QString sql = sqlTemporaryTables[connectionType] % tableName % "_temp (";
+    for (int16_t i = 0; i < headersSize; ++i) {
         sql += columnNames[i] % " TEXT";
         if (i < headersSize - 1) sql += ", ";
     }

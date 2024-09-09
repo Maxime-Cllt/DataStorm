@@ -74,7 +74,7 @@ InsertWindow::InsertWindow(QWidget *parent)
     this->ui->database_path_opener->setToolTip("Chemin du fichier SQLite");
     this->ui->database_path_opener->setIcon(QIcon::fromTheme("folder"));
 
-    QStringList drivers = QSqlDatabase::drivers();
+    const QStringList drivers = QSqlDatabase::drivers();
     this->ui->database_box->addItem("");
     for (const QString &driver: drivers) {
         this->ui->database_box->addItem(driver);
@@ -85,7 +85,7 @@ InsertWindow::InsertWindow(QWidget *parent)
     connect(clearButton, &QPushButton::clicked, this, &InsertWindow::clearUi);
     connect(openButton, &QPushButton::clicked, this, &InsertWindow::openFile);
     connect(this->ui->connectButton, &QPushButton::clicked, this, &InsertWindow::connectToDb);
-    connect(this->ui->database_box, QOverload<int>::of(&QComboBox::currentIndexChanged), [this](const int index) {
+    connect(this->ui->database_box, QOverload<int>::of(&QComboBox::currentIndexChanged), [this]() {
 
         this->connectionType = this->ui->database_box->currentText();
 
@@ -143,7 +143,7 @@ void InsertWindow::openFile() {
             "Fichier: " + parts[parts.size() - 1] + " (" + QString::number(file.size() / 1024) + " Ko)");
 
     this->ui->tableName->setText(get_name_for_table(this->fileName));
-    addLog("Fichier ouvert : " + this->fileName);
+    this->addLog("Fichier ouvert : " + this->fileName);
     file.close();
 }
 
@@ -236,6 +236,16 @@ void InsertWindow::addMenuBar() {
     connect(saveConfig, &QAction::triggered, this, &InsertWindow::saveConfig);
     connect(loadConfig, &QAction::triggered, this, &InsertWindow::loadConfig);
 
+    QMenu *databaseMenu = menuBar->addMenu("Base de données");
+    QAction *connectAction = databaseMenu->addAction("Se déconnecter");
+    connect(connectAction, &QAction::triggered, [this]() {
+        if (this->database.isOpen()) {
+            this->database.close();
+            this->setConnected(false);
+            this->addLog("Déconnexion de la base de données");
+        }
+    });
+
     menuBar->setStyleSheet(
             "QMenuBar {background-color: #2196F3; color: white;}"
             "QMenuBar::item:selected {background-color: #1976D2;}"
@@ -268,7 +278,7 @@ void InsertWindow::addMenuBar() {
             "QMenuBar::item:pressed {background-color: #0D47A1;}"
             "QMenuBar::item {background-color: #2196F3; color: white;}"
     );
-    setMenuBar(menuBar.release());
+    this->setMenuBar(menuBar.release());
 }
 
 void InsertWindow::saveConfig() {
