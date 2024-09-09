@@ -141,7 +141,7 @@ Does not use the BULK INSERT command because it's only available for SQL Server.
     </tr>
     <tr>
         <td align="center" style="border: 1px solid white;">2345</td>
-        <td align="center" style="border: 1px solid white;">922</td>
+        <td align="center" style="border: 1px solid white;">893</td>
         <td align="center" style="border: 1px solid white;">MySQL</td>
     </tr>
     <tr>
@@ -151,7 +151,7 @@ Does not use the BULK INSERT command because it's only available for SQL Server.
     </tr>
 <tr>
         <td align="center" style="border: 1px solid white;">21 105</td>
-        <td align="center" style="border: 1px solid white;">7788</td>
+        <td align="center" style="border: 1px solid white;">7623</td>
         <td align="center" style="border: 1px solid white;">MySQL</td>
     </tr>
 </table>

@@ -25,7 +25,7 @@ public:
 
     void insertFile();
 
-    void clearTable();
+    void clearUi();
 
     void addLog(const QString &message);
 
@@ -33,15 +33,15 @@ public:
 
     bool connectToDb();
 
-    void dropAndCreateTable();
-
-    void alterTable(const QMap<QString, int> &maxLenghtColumns);
-
-    void loadCSV();
-
     void saveConfig();
 
     void loadConfig();
+
+    [[nodiscard]] QSqlDatabase *getDatabase() const;
+
+    [[nodiscard]] Ui::InsertWindow *getUi() const;
+
+    [[nodiscard]] const QString *getFileName() const;
 
 private:
     Ui::InsertWindow *ui;
@@ -50,8 +50,6 @@ private:
     QPushButton *insertSqlButton{};
     QPushButton *openButton{};
     QSqlDatabase database;
-    QStringList headers;
-    char separator = ';';
     QString connectionType;
 };
 
